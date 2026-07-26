@@ -12,3 +12,5 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sea-orm = { version = "1.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
 dotenvy = "0.15"
+cliptown-interfaces-rust = { path = "../cliptown-interfaces/generated/rust" }
+tracing-subscriber = "0.3"
