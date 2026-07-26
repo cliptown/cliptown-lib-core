@@ -14,3 +14,8 @@ sea-orm = { version = "1.0", features = ["sqlx-postgres", "runtime-tokio-rustls"
 dotenvy = "0.15"
 cliptown-interfaces-rust = { path = "../cliptown-interfaces/generated/rust" }
 tracing-subscriber = "0.3"
+tower = "0.5.3"
+http-body-util = "0.1.4"
+
+[dev-dependencies]
+tower-http = "0.7.0"

@@ -13,16 +13,34 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout cliptown-rust-backend.rs
+        uses: actions/checkout@v4
+        with:
+          path: cliptown-rust-backend.rs
+
+      - name: Checkout cliptown-interfaces
+        uses: actions/checkout@v4
+        with:
+          repository: cliptown/cliptown-interfaces
+          path: cliptown-interfaces
+          
+      - name: Setup Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: No build artifacts or env files tracked
+        working-directory: cliptown-rust-backend.rs
         run: |
           bad=$(git ls-files | grep -E '(^|/)(target/|\.direnv/|\.env$|result$)' || true)
           if [ -n "$bad" ]; then echo "forbidden tracked files:"; echo "$bad"; exit 1; fi
       - name: Format Check
+        working-directory: cliptown-rust-backend.rs
         run: cargo fmt --check
       - name: Build
+        working-directory: cliptown-rust-backend.rs
         run: cargo build --verbose
       - name: Run tests
+        working-directory: cliptown-rust-backend.rs
         run: cargo test --verbose
       - name: Run clippy
+        working-directory: cliptown-rust-backend.rs
         run: cargo clippy -- -D warnings
