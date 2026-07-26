@@ -1,3 +1,5 @@
+pub mod entity;
+
 use axum::{
     routing::get,
     Router,
