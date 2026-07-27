@@ -2,6 +2,8 @@ name: refresh-lock-once
 on:
   push:
     branches: [agent/api-contract-ci]
+  pull_request:
+    branches: [main]
 permissions:
   contents: write
 jobs:
