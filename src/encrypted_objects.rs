@@ -82,11 +82,9 @@ impl EncryptedObjectManifest {
         if recipients.len() != self.wrapped_keys.len() {
             return Err("wrapped keys must be unique per recipient device");
         }
-        if self
-            .wrapped_keys
-            .iter()
-            .any(|key| key.wrapped_key_base64.is_empty() || key.associated_data_hash_base64.is_empty())
-        {
+        if self.wrapped_keys.iter().any(|key| {
+            key.wrapped_key_base64.is_empty() || key.associated_data_hash_base64.is_empty()
+        }) {
             return Err("wrapped content keys are incomplete");
         }
         Ok(())
