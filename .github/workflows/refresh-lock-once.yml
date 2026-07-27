@@ -1,0 +1,36 @@
+name: refresh-lock-once
+on:
+  push:
+    branches: [agent/api-contract-ci]
+permissions:
+  contents: write
+jobs:
+  refresh:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-contract-ci
+          path: cliptown-rust-backend.rs
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: cliptown/cliptown-interfaces
+          ref: main
+          path: cliptown-interfaces
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Refresh lockfile, format, and remove workflow
+        working-directory: cliptown-rust-backend.rs
+        run: |
+          cargo update
+          cargo fmt
+          rm .github/workflows/refresh-lock-once.yml
+          git add -A
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: refresh backend lockfile and formatting'
+          git push origin HEAD:agent/api-contract-ci
