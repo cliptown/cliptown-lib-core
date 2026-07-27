@@ -1,3 +1,5 @@
+pub mod account_security;
+pub mod encrypted_objects;
 pub mod entity;
 
 use std::{env, error::Error};
