@@ -2,20 +2,21 @@
 name = "cliptown-api"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/cliptown/cliptown-rust-backend.rs"
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
 axum = "0.7"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-sea-orm = { version = "1.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
-dotenvy = "0.15"
 cliptown-interfaces-rust = { path = "../cliptown-interfaces/generated/rust" }
+dotenvy = "0.15"
+sea-orm = { version = "1.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+tower-http = { version = "0.6", features = ["set-header"] }
 tracing-subscriber = "0.3"
-tower = "0.5.3"
-http-body-util = "0.1.4"
 
 [dev-dependencies]
-tower-http = "0.7.0"
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
