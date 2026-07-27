@@ -1,0 +1,29 @@
+name: Format preview
+
+on:
+  push:
+    branches:
+      - agent/den-42-secure-device-r2-foundation
+
+permissions:
+  contents: read
+
+jobs:
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - run: cargo fmt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rustfmt-output
+          path: |
+            src/account_security.rs
+            src/encrypted_objects.rs
+            src/main.rs
+          if-no-files-found: error
+          retention-days: 1
