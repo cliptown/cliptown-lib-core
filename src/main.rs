@@ -48,8 +48,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
     dotenvy::dotenv().ok();
 
-    let bind_address = env::var("CLIPTOWN_BIND_ADDRESS")
-        .unwrap_or_else(|_| "0.0.0.0:3000".to_owned());
+    let bind_address =
+        env::var("CLIPTOWN_BIND_ADDRESS").unwrap_or_else(|_| "0.0.0.0:3000".to_owned());
     if bind_address.trim().is_empty() {
         return Err("CLIPTOWN_BIND_ADDRESS must not be empty".into());
     }
@@ -114,7 +114,10 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
         assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
-        assert_eq!(response.headers()[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+        assert_eq!(
+            response.headers()[header::X_CONTENT_TYPE_OPTIONS],
+            "nosniff"
+        );
 
         let body = json_body(response).await;
         assert_eq!(body["service"], "cliptown-api");
