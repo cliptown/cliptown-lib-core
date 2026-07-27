@@ -25,15 +25,39 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Refresh lockfile, format, and remove workflow
+      - name: Refresh dependency graph and formatting
+        id: refresh
+        continue-on-error: true
         working-directory: cliptown-rust-backend.rs
         run: |
-          cargo update
-          cargo fmt
-          rm .github/workflows/refresh-lock-once.yml
+          set -o pipefail
+          {
+            echo '== cargo update =='
+            cargo update
+            echo '== cargo fmt =='
+            cargo fmt
+            echo '== git diff =='
+            git diff --stat
+          } 2>&1 | tee refresh.txt
+      - name: Upload refresh diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-refresh-diagnostics
+          path: cliptown-rust-backend.rs/refresh.txt
+          if-no-files-found: error
+      - name: Commit refreshed files and remove workflow
+        if: steps.refresh.outcome == 'success'
+        working-directory: cliptown-rust-backend.rs
+        run: |
+          rm .github/workflows/refresh-lock-once.yml refresh.txt
           git add -A
           if git diff --cached --quiet; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'chore: refresh backend lockfile and formatting'
           git push origin HEAD:agent/api-contract-ci
+      - name: Enforce refresh result
+        if: steps.refresh.outcome == 'failure'
+        working-directory: cliptown-rust-backend.rs
+        run: cat refresh.txt && exit 1
