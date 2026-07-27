@@ -118,18 +118,10 @@ mod tests {
 
     #[test]
     fn revoked_device_state_is_terminal() {
-        assert!(
-            DeviceLifecycleState::Pending.can_transition_to(DeviceLifecycleState::Active)
-        );
-        assert!(
-            DeviceLifecycleState::Active.can_transition_to(DeviceLifecycleState::Suspended)
-        );
-        assert!(
-            DeviceLifecycleState::Suspended.can_transition_to(DeviceLifecycleState::Active)
-        );
-        assert!(
-            !DeviceLifecycleState::Revoked.can_transition_to(DeviceLifecycleState::Active)
-        );
+        assert!(DeviceLifecycleState::Pending.can_transition_to(DeviceLifecycleState::Active));
+        assert!(DeviceLifecycleState::Active.can_transition_to(DeviceLifecycleState::Suspended));
+        assert!(DeviceLifecycleState::Suspended.can_transition_to(DeviceLifecycleState::Active));
+        assert!(!DeviceLifecycleState::Revoked.can_transition_to(DeviceLifecycleState::Active));
     }
 
     #[test]
