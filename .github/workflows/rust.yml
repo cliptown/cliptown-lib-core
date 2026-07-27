@@ -42,8 +42,21 @@ jobs:
         working-directory: cliptown-rust-backend.rs
         run: cargo fmt --check
       - name: Run Clippy
+        id: clippy
+        continue-on-error: true
         working-directory: cliptown-rust-backend.rs
-        run: cargo clippy --locked --all-targets --message-format=short -- -D warnings
+        run: cargo clippy --locked --all-targets --message-format=short -- -D warnings > clippy-${{ matrix.toolchain }}.txt 2>&1
+      - name: Upload Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-clippy-${{ matrix.toolchain }}
+          path: cliptown-rust-backend.rs/clippy-${{ matrix.toolchain }}.txt
+          if-no-files-found: error
+      - name: Enforce Clippy result
+        if: steps.clippy.outcome == 'failure'
+        working-directory: cliptown-rust-backend.rs
+        run: cat clippy-${{ matrix.toolchain }}.txt && exit 1
       - name: Run all-target tests
         working-directory: cliptown-rust-backend.rs
         env:
