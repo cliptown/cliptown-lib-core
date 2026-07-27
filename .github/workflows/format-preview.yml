@@ -1,9 +1,8 @@
 name: Format preview
 
 on:
-  push:
-    branches:
-      - agent/den-42-secure-device-r2-foundation
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
