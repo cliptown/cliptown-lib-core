@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     strategy:
@@ -16,34 +20,65 @@ jobs:
       matrix:
         toolchain: ['1.88.0', stable]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out backend
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           path: cliptown-rust-backend.rs
-      - uses: actions/checkout@v4
+          persist-credentials: false
+          show-progress: false
+      - name: Check out pinned interfaces
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: cliptown/cliptown-interfaces
-          ref: main
+          ref: e4e957b5372dc363fe6a52559c8959f0de781efb
           path: cliptown-interfaces
+          persist-credentials: false
+          show-progress: false
       - name: Set up Rust ${{ matrix.toolchain }}
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
       - name: Reject generated and secret files
         working-directory: cliptown-rust-backend.rs
         run: |
-          bad=$(git ls-files | grep -E '(^|/)(target/|\.direnv/|\.env$|result$)' || true)
+          bad=$(git ls-files | grep -E '(^|/)(target/|\.cache/|\.direnv/|\.env$|result$)' || true)
           test -z "$bad" || { printf 'forbidden tracked files:\n%s\n' "$bad"; exit 1; }
       - name: Verify dependency graph
         working-directory: cliptown-rust-backend.rs
         run: cargo metadata --locked --format-version 1 --no-deps >/dev/null
+      - name: Enforce Postgres-only active dependency graph
+        working-directory: cliptown-rust-backend.rs
+        run: |
+          for package in rsa sqlx-mysql sqlx-sqlite; do
+            report=$(cargo tree --locked -e normal,build -i "$package" 2>&1 || true)
+            if grep -Eq "^${package} v[0-9]" <<<"$report"; then
+              printf '%s\n' "$report" >&2
+              echo "forbidden package $package is reachable in the active Postgres dependency graph" >&2
+              exit 1
+            fi
+          done
       - name: Check formatting
         working-directory: cliptown-rust-backend.rs
-        run: cargo fmt --check
+        run: cargo fmt --all --check
       - name: Run Clippy
+        id: clippy
+        continue-on-error: true
         working-directory: cliptown-rust-backend.rs
-        run: cargo clippy --locked --all-targets --message-format=short -- -D warnings
+        run: cargo clippy --locked --all-targets --message-format=short -- -D warnings >clippy.txt 2>&1
+      - name: Upload Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-${{ matrix.toolchain }}
+          path: cliptown-rust-backend.rs/clippy.txt
+          if-no-files-found: error
+      - name: Enforce Clippy result
+        if: steps.clippy.outcome == 'failure'
+        working-directory: cliptown-rust-backend.rs
+        run: cat clippy.txt && exit 1
       - name: Run all-target tests
         working-directory: cliptown-rust-backend.rs
         env:
