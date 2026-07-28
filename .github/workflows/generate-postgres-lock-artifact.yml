@@ -1,0 +1,48 @@
+name: generate-postgres-only-lock-artifact
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/generate-postgres-lock-artifact.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out backend PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: cliptown-rust-backend.rs
+          persist-credentials: false
+      - name: Check out pinned interfaces
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: cliptown/cliptown-interfaces
+          ref: e4e957b5372dc363fe6a52559c8959f0de781efb
+          path: cliptown-interfaces
+          persist-credentials: false
+      - name: Set up Rust 1.88
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: 1.88.0
+      - name: Generate and verify Postgres-only lock graph
+        working-directory: cliptown-rust-backend.rs
+        run: |
+          cargo metadata --format-version 1 --no-deps >/dev/null
+          if grep -Fq 'name = "sqlx-mysql"' Cargo.lock || grep -Fq 'name = "sqlx-sqlite"' Cargo.lock || grep -Fq 'name = "rsa"' Cargo.lock; then
+            echo 'unused SQLx MySQL/SQLite/RSA packages remain in the Postgres-only graph' >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cliptown-postgres-only-cargo-lock
+          path: cliptown-rust-backend.rs/Cargo.lock
+          if-no-files-found: error
