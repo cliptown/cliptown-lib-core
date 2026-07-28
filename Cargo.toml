@@ -10,6 +10,8 @@ repository = "https://github.com/cliptown/cliptown-rust-backend.rs"
 axum = "0.7"
 cliptown-interfaces-rust = { path = "../cliptown-interfaces/generated/rust" }
 dotenvy = "0.15"
+# Keep defaults disabled: enabling every SQLx backend pulls unused MySQL/SQLite code
+# and the MySQL-only RSA authentication dependency into this Postgres service.
 sea-orm = { version = "1.0", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
