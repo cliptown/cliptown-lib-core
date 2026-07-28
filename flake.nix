@@ -24,6 +24,7 @@
               bash
               binutils
               cacert
+              cargo-audit
               coreutils
               gcc
               git
