@@ -1,0 +1,87 @@
+name: Nix agent contract
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - .nix/**
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - src/**
+      - tests/**
+      - .github/workflows/rust.yml
+      - .github/workflows/nix.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - .nix/**
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - src/**
+      - tests/**
+      - .github/workflows/rust.yml
+      - .github/workflows/nix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out backend
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          show-progress: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Validate Nix and agent contract
+        run: nix develop -c agent-check preflight
+
+      - name: Resolve pinned sibling workspace
+        run: nix develop -c agent-check workspace
+
+      - name: Verify dependency graph
+        run: nix develop -c agent-check metadata
+
+      - name: Check Rust formatting
+        run: nix develop -c agent-check fmt
+
+      - name: Check all Rust targets
+        run: nix develop -c agent-check check
+
+      - name: Run Clippy
+        run: nix develop -c agent-check clippy
+
+      - name: Run all-target tests
+        run: nix develop -c agent-check test
+
+      - name: Build release binary
+        run: nix develop -c agent-check build
+
+      - name: Prepare pinned RustSec scanner
+        run: nix develop -c agent-check audit-prepare
+
+      - name: Audit locked dependencies
+        run: nix develop -c agent-check audit
+
+      - name: Prove default agent command
+        run: nix develop -c agent-check
