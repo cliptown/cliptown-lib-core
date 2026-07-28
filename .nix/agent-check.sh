@@ -14,6 +14,7 @@ backend_repo="$workspace_root/cliptown-rust-backend.rs"
 interfaces_repo="$workspace_root/cliptown-interfaces"
 interfaces_revision="e4e957b5372dc363fe6a52559c8959f0de781efb"
 rust_toolchain="1.88.0"
+rsa_advisory="RUSTSEC-2023-0071"
 
 export CARGO_HOME="${CARGO_HOME:-$cache_root/cargo-home}"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$cache_root/target}"
@@ -79,6 +80,20 @@ require_cargo_audit() {
   cargo audit --version
 }
 
+check_postgres_dependency_boundary() {
+  local package report
+  prepare_workspace
+  for package in rsa sqlx-mysql sqlx-sqlite; do
+    report="$(cd "$backend_repo" && cargo tree --locked -e normal,build -i "$package" 2>&1 || true)"
+    if grep -Eq "^${package} v[0-9]" <<<"$report"; then
+      printf '%s\n' "$report" >&2
+      printf 'forbidden package %s is reachable in the active Postgres dependency graph\n' "$package" >&2
+      return 1
+    fi
+  done
+  printf '%s\n' 'active dependency graph excludes rsa, sqlx-mysql, and sqlx-sqlite'
+}
+
 run_stage() {
   local stage="$1"
   printf '\n==> agent-check stage: %s\n' "$stage" >&2
@@ -106,6 +121,9 @@ run_stage() {
     metadata)
       run_in_workspace cargo metadata --locked --format-version 1 --no-deps >/dev/null
       ;;
+    dependency-boundary)
+      check_postgres_dependency_boundary
+      ;;
     fmt)
       run_in_workspace cargo fmt --all --check
       ;;
@@ -123,16 +141,17 @@ run_stage() {
       ;;
     audit-prepare)
       require_cargo_audit
+      check_postgres_dependency_boundary
       ;;
     audit)
       require_cargo_audit
-      prepare_workspace
-      (cd "$backend_repo" && cargo audit)
+      check_postgres_dependency_boundary
+      (cd "$backend_repo" && cargo audit --ignore "$rsa_advisory")
       ;;
     audit-json)
       require_cargo_audit >/dev/null
-      prepare_workspace
-      (cd "$backend_repo" && cargo audit --json)
+      check_postgres_dependency_boundary >/dev/null
+      (cd "$backend_repo" && cargo audit --ignore "$rsa_advisory" --json)
       ;;
     *)
       printf 'unknown agent-check stage: %s\n' "$stage" >&2
@@ -143,15 +162,15 @@ run_stage() {
 
 case "${1:-all}" in
   all)
-    for stage in preflight workspace metadata fmt check clippy test build audit; do
+    for stage in preflight workspace metadata dependency-boundary fmt check clippy test build audit; do
       run_stage "$stage"
     done
     ;;
-  preflight | workspace | metadata | fmt | check | clippy | test | build | audit-prepare | audit | audit-json)
+  preflight | workspace | metadata | dependency-boundary | fmt | check | clippy | test | build | audit-prepare | audit | audit-json)
     run_stage "$1"
     ;;
   *)
-    printf 'usage: %s [all|preflight|workspace|metadata|fmt|check|clippy|test|build|audit-prepare|audit|audit-json]\n' "$0" >&2
+    printf 'usage: %s [all|preflight|workspace|metadata|dependency-boundary|fmt|check|clippy|test|build|audit-prepare|audit|audit-json]\n' "$0" >&2
     exit 64
     ;;
 esac
