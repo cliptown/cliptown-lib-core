@@ -24,7 +24,7 @@ nix develop -c agent-check audit
 
 The backend uses a sibling path dependency on `cliptown-interfaces/generated/rust`. The agent contract resolves that dependency in a repository-local workspace and pins `cliptown/cliptown-interfaces` to commit `e4e957b5372dc363fe6a52559c8959f0de781efb`; it does not silently consume a moving `main` branch. The working tree is copied with `rsync`, excluding `.git`, `.cache`, and `target`, so local changes are validated without mutating sibling directories.
 
-Rustup, Cargo, target artifacts, the pinned `cargo-audit` binary, XDG caches, and the sibling workspace remain below `.cache/nix-agent` unless the caller explicitly overrides the corresponding environment variables. The shell never chooses cloud identities, loads secrets, prompts, or mutates global Git configuration.
+Rustup, Cargo, target artifacts, XDG caches, and the sibling workspace remain below `.cache/nix-agent` unless the caller explicitly overrides the corresponding environment variables. `cargo-audit` comes directly from the `flake.lock`-pinned Nix package set rather than being compiled or downloaded during validation. The shell never chooses cloud identities, loads secrets, prompts, or mutates global Git configuration.
 
 ## Docker / OCI
 
