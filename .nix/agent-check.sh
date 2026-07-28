@@ -14,18 +14,14 @@ backend_repo="$workspace_root/cliptown-rust-backend.rs"
 interfaces_repo="$workspace_root/cliptown-interfaces"
 interfaces_revision="e4e957b5372dc363fe6a52559c8959f0de781efb"
 rust_toolchain="1.88.0"
-cargo_audit_version="0.22.2"
 
 export CARGO_HOME="${CARGO_HOME:-$cache_root/cargo-home}"
-export CARGO_INSTALL_ROOT="${CARGO_INSTALL_ROOT:-$cache_root/cargo-tools}"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$cache_root/target}"
 export RUSTUP_HOME="${RUSTUP_HOME:-$cache_root/rustup}"
 export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-$rust_toolchain}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$cache_root/xdg}"
-export PATH="$CARGO_INSTALL_ROOT/bin:$PATH"
 mkdir -p \
   "$CARGO_HOME" \
-  "$CARGO_INSTALL_ROOT" \
   "$CARGO_TARGET_DIR" \
   "$RUSTUP_HOME" \
   "$XDG_CACHE_HOME" \
@@ -88,29 +84,12 @@ run_in_workspace() {
   )
 }
 
-installed_cargo_audit_version() {
-  cargo audit --version 2>/dev/null || true
-}
-
 require_cargo_audit() {
-  local installed_version
-  installed_version="$(installed_cargo_audit_version)"
-  if [[ "$installed_version" != "cargo-audit $cargo_audit_version" ]]; then
-    printf 'cargo-audit %s is required, found: %s\n' \
-      "$cargo_audit_version" \
-      "${installed_version:-not installed}" >&2
+  if ! command -v cargo-audit >/dev/null 2>&1; then
+    printf '%s\n' 'cargo-audit is missing from the flake-pinned Nix shell' >&2
     return 69
   fi
-}
-
-prepare_cargo_audit() {
-  if [[ "$(installed_cargo_audit_version)" != "cargo-audit $cargo_audit_version" ]]; then
-    cargo install cargo-audit \
-      --version "$cargo_audit_version" \
-      --locked \
-      --root "$CARGO_INSTALL_ROOT"
-  fi
-  require_cargo_audit
+  cargo audit --version
 }
 
 run_stage() {
@@ -132,6 +111,7 @@ run_stage() {
       nix flake check --show-trace
       rustc --version
       cargo --version
+      require_cargo_audit
       ;;
     workspace)
       prepare_workspace
@@ -158,11 +138,10 @@ run_stage() {
       run_in_workspace cargo build --locked --release
       ;;
     audit-prepare)
-      prepare_cargo_audit
-      cargo audit --version
+      require_cargo_audit
       ;;
     audit)
-      prepare_cargo_audit
+      require_cargo_audit
       prepare_workspace
       (
         cd "$backend_repo"
