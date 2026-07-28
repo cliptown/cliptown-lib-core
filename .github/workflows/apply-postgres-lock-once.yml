@@ -1,0 +1,61 @@
+name: apply-postgres-only-lock-once
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/apply-postgres-lock-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/den-344-agent-first-nix' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out backend branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/den-344-agent-first-nix
+          path: cliptown-rust-backend.rs
+          fetch-depth: 0
+      - name: Fetch pinned interfaces without cross-repository token scope
+        run: |
+          mkdir -p cliptown-interfaces
+          git -C cliptown-interfaces init -q
+          git -C cliptown-interfaces remote add origin https://github.com/cliptown/cliptown-interfaces.git
+          git -C cliptown-interfaces fetch --depth=1 origin e4e957b5372dc363fe6a52559c8959f0de781efb
+          git -C cliptown-interfaces checkout --detach -q FETCH_HEAD
+          test "$(git -C cliptown-interfaces rev-parse HEAD)" = e4e957b5372dc363fe6a52559c8959f0de781efb
+          test -f cliptown-interfaces/generated/rust/Cargo.toml
+      - name: Set up Rust 1.88
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: 1.88.0
+      - name: Generate and verify lock graph
+        working-directory: cliptown-rust-backend.rs
+        run: |
+          cargo metadata --format-version 1 --no-deps >/dev/null
+          if grep -Fq 'name = "sqlx-mysql"' Cargo.lock || grep -Fq 'name = "sqlx-sqlite"' Cargo.lock || grep -Fq 'name = "rsa"' Cargo.lock; then
+            echo 'unused SQLx MySQL/SQLite/RSA packages remain in the Postgres-only graph' >&2
+            exit 1
+          fi
+          rm -f \
+            .github/workflows/apply-postgres-lock-once.yml \
+            .github/workflows/generate-postgres-lock-artifact.yml \
+            .github/workflows/refresh-postgres-lock-once.yml
+      - name: Commit exact generated lockfile
+        working-directory: cliptown-rust-backend.rs
+        run: |
+          git add Cargo.lock Cargo.toml .github/workflows
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'DEN-347 apply Postgres-only lock graph'
+          git push origin HEAD:agent/den-344-agent-first-nix
