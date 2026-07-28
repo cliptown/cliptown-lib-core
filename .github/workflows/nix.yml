@@ -77,7 +77,7 @@ jobs:
       - name: Build release binary
         run: nix develop -c agent-check build
 
-      - name: Prepare pinned RustSec scanner
+      - name: Verify flake-pinned RustSec scanner
         run: nix develop -c agent-check audit-prepare
 
       - name: Audit locked dependencies
