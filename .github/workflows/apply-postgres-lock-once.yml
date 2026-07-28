@@ -36,7 +36,8 @@ jobs:
       - name: Generate and verify lock graph
         working-directory: cliptown-rust-backend.rs
         run: |
-          cargo metadata --format-version 1 --no-deps >/dev/null
+          rm -f Cargo.lock
+          cargo generate-lockfile
           if grep -Fq 'name = "sqlx-mysql"' Cargo.lock || grep -Fq 'name = "sqlx-sqlite"' Cargo.lock || grep -Fq 'name = "rsa"' Cargo.lock; then
             echo 'unused SQLx MySQL/SQLite/RSA packages remain in the Postgres-only graph' >&2
             exit 1
