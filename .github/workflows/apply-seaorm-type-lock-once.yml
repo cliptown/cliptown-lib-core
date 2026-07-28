@@ -15,7 +15,7 @@ jobs:
   apply:
     if: github.head_ref == 'agent/den-344-agent-first-nix' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Check out backend branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -23,12 +23,15 @@ jobs:
           ref: agent/den-344-agent-first-nix
           path: cliptown-rust-backend.rs
           fetch-depth: 0
-      - name: Check out pinned interfaces
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          repository: cliptown/cliptown-interfaces
-          ref: e4e957b5372dc363fe6a52559c8959f0de781efb
-          path: cliptown-interfaces
+      - name: Fetch pinned interfaces without cross-repository token scope
+        run: |
+          mkdir -p cliptown-interfaces
+          git -C cliptown-interfaces init -q
+          git -C cliptown-interfaces remote add origin https://github.com/cliptown/cliptown-interfaces.git
+          git -C cliptown-interfaces fetch --depth=1 origin e4e957b5372dc363fe6a52559c8959f0de781efb
+          git -C cliptown-interfaces checkout --detach -q FETCH_HEAD
+          test "$(git -C cliptown-interfaces rev-parse HEAD)" = e4e957b5372dc363fe6a52559c8959f0de781efb
+          test -f cliptown-interfaces/generated/rust/Cargo.toml
       - name: Set up Rust 1.88
         uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
@@ -41,8 +44,9 @@ jobs:
           cargo tree -i rsa >rsa-tree.txt 2>&1 || true
           cargo tree -i sqlx-mysql >sqlx-mysql-tree.txt 2>&1 || true
           cargo tree -i sqlx-sqlite >sqlx-sqlite-tree.txt 2>&1 || true
+          cargo check --locked --all-targets
       - name: Upload regenerated lock diagnostics
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cliptown-seaorm-type-lock
           path: |
@@ -51,6 +55,7 @@ jobs:
             cliptown-rust-backend.rs/rsa-tree.txt
             cliptown-rust-backend.rs/sqlx-mysql-tree.txt
             cliptown-rust-backend.rs/sqlx-sqlite-tree.txt
+          retention-days: 1
           if-no-files-found: error
       - name: Verify and stage exact lockfile
         working-directory: cliptown-rust-backend.rs
