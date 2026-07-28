@@ -62,6 +62,9 @@ jobs:
       - name: Verify dependency graph
         run: nix develop -c agent-check metadata
 
+      - name: Enforce Postgres-only active dependency graph
+        run: nix develop -c agent-check dependency-boundary
+
       - name: Check Rust formatting
         run: nix develop -c agent-check fmt
 
@@ -95,7 +98,7 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - name: Verify flake-pinned RustSec scanner
+      - name: Verify flake-pinned RustSec scanner and dependency boundary
         run: nix develop -c agent-check audit-prepare
 
       - name: Collect RustSec diagnostics
