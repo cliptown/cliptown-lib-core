@@ -29,4 +29,4 @@ cargo test --locked --all-targets
 cargo build --locked --release
 ```
 
-GitHub Actions runs these checks against Rust 1.88 and stable while resolving `cliptown-interfaces` from its merged `main` branch. The repository toolchain is pinned to the declared Rust 1.88 minimum required by the locked SeaORM/ICU/time dependency graph.
+GitHub Actions runs these checks against Rust 1.88 and stable. Both native and Nix CI resolve `cliptown-interfaces` at commit `e4e957b5372dc363fe6a52559c8959f0de781efb`, avoiding a moving sibling dependency while retaining the repository's declared Rust 1.88 minimum required by the locked SeaORM/ICU/time dependency graph.
