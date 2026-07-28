@@ -20,12 +20,7 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$cache_root/target}"
 export RUSTUP_HOME="${RUSTUP_HOME:-$cache_root/rustup}"
 export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-$rust_toolchain}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$cache_root/xdg}"
-mkdir -p \
-  "$CARGO_HOME" \
-  "$CARGO_TARGET_DIR" \
-  "$RUSTUP_HOME" \
-  "$XDG_CACHE_HOME" \
-  "$workspace_root"
+mkdir -p "$CARGO_HOME" "$CARGO_TARGET_DIR" "$RUSTUP_HOME" "$XDG_CACHE_HOME" "$workspace_root"
 
 ensure_rust_toolchain() {
   if ! rustup toolchain list | grep -Eq '^1\.88\.0(-|[[:space:]])'; then
@@ -36,7 +31,6 @@ ensure_rust_toolchain() {
 
 sync_interfaces() {
   local current_revision=""
-
   if [[ -d "$interfaces_repo/.git" ]]; then
     current_revision="$(git -C "$interfaces_repo" rev-parse HEAD 2>/dev/null || true)"
   fi
@@ -53,9 +47,7 @@ sync_interfaces() {
 
   current_revision="$(git -C "$interfaces_repo" rev-parse HEAD)"
   if [[ "$current_revision" != "$interfaces_revision" ]]; then
-    printf 'ClipTown interfaces revision mismatch: expected %s, found %s\n' \
-      "$interfaces_revision" \
-      "$current_revision" >&2
+    printf 'ClipTown interfaces revision mismatch: expected %s, found %s\n' "$interfaces_revision" "$current_revision" >&2
     return 70
   fi
   test -f "$interfaces_repo/generated/rust/Cargo.toml"
@@ -63,12 +55,7 @@ sync_interfaces() {
 
 sync_backend() {
   mkdir -p "$backend_repo"
-  rsync -a --delete \
-    --exclude '.git/' \
-    --exclude '.cache/' \
-    --exclude 'target/' \
-    "$repo_root/" \
-    "$backend_repo/"
+  rsync -a --delete --exclude '.git/' --exclude '.cache/' --exclude 'target/' "$repo_root/" "$backend_repo/"
 }
 
 prepare_workspace() {
@@ -94,7 +81,6 @@ require_cargo_audit() {
 
 run_stage() {
   local stage="$1"
-
   printf '\n==> agent-check stage: %s\n' "$stage" >&2
   ensure_rust_toolchain
   case "$stage" in
@@ -115,9 +101,7 @@ run_stage() {
       ;;
     workspace)
       prepare_workspace
-      printf 'backend workspace: %s\ninterfaces revision: %s\n' \
-        "$backend_repo" \
-        "$(git -C "$interfaces_repo" rev-parse HEAD)"
+      printf 'backend workspace: %s\ninterfaces revision: %s\n' "$backend_repo" "$(git -C "$interfaces_repo" rev-parse HEAD)"
       ;;
     metadata)
       run_in_workspace cargo metadata --locked --format-version 1 --no-deps >/dev/null
@@ -143,10 +127,12 @@ run_stage() {
     audit)
       require_cargo_audit
       prepare_workspace
-      (
-        cd "$backend_repo"
-        cargo audit
-      )
+      (cd "$backend_repo" && cargo audit)
+      ;;
+    audit-json)
+      require_cargo_audit >/dev/null
+      prepare_workspace
+      (cd "$backend_repo" && cargo audit --json)
       ;;
     *)
       printf 'unknown agent-check stage: %s\n' "$stage" >&2
@@ -161,11 +147,11 @@ case "${1:-all}" in
       run_stage "$stage"
     done
     ;;
-  preflight | workspace | metadata | fmt | check | clippy | test | build | audit-prepare | audit)
+  preflight | workspace | metadata | fmt | check | clippy | test | build | audit-prepare | audit | audit-json)
     run_stage "$1"
     ;;
   *)
-    printf 'usage: %s [all|preflight|workspace|metadata|fmt|check|clippy|test|build|audit-prepare|audit]\n' "$0" >&2
+    printf 'usage: %s [all|preflight|workspace|metadata|fmt|check|clippy|test|build|audit-prepare|audit|audit-json]\n' "$0" >&2
     exit 64
     ;;
 esac
