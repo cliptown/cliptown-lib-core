@@ -23,6 +23,7 @@ The service does not run database migrations at startup. PostgreSQL desired stat
 
 ```sh
 cargo metadata --locked --format-version 1 --no-deps
+cargo tree --locked -e normal,build -i rsa
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
@@ -32,4 +33,4 @@ nix develop -c agent-check audit
 
 GitHub Actions runs the Rust checks against Rust 1.88 and stable. Both native and Nix CI resolve `cliptown-interfaces` at commit `e4e957b5372dc363fe6a52559c8959f0de781efb`, avoiding a moving sibling dependency while retaining the repository's declared Rust 1.88 minimum required by the locked SeaORM/ICU/time dependency graph.
 
-SeaORM default features remain disabled because this service uses PostgreSQL only. The locked graph excludes SQLx MySQL, SQLx SQLite, and their unused RSA authentication dependency; the flake-pinned RustSec scanner must pass without advisory exceptions.
+SeaORM default features remain disabled because this service uses PostgreSQL only. Cargo may retain optional SQLx MySQL/SQLite package metadata in `Cargo.lock`, but native and Nix CI fail if `rsa`, `sqlx-mysql`, or `sqlx-sqlite` becomes reachable in the active normal/build dependency graph. RustSec advisory `RUSTSEC-2023-0071` is ignored only after that reachability proof; every other advisory remains fail-closed.
