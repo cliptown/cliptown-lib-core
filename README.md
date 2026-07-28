@@ -27,6 +27,9 @@ cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
 cargo build --locked --release
+nix develop -c agent-check audit
 ```
 
-GitHub Actions runs these checks against Rust 1.88 and stable. Both native and Nix CI resolve `cliptown-interfaces` at commit `e4e957b5372dc363fe6a52559c8959f0de781efb`, avoiding a moving sibling dependency while retaining the repository's declared Rust 1.88 minimum required by the locked SeaORM/ICU/time dependency graph.
+GitHub Actions runs the Rust checks against Rust 1.88 and stable. Both native and Nix CI resolve `cliptown-interfaces` at commit `e4e957b5372dc363fe6a52559c8959f0de781efb`, avoiding a moving sibling dependency while retaining the repository's declared Rust 1.88 minimum required by the locked SeaORM/ICU/time dependency graph.
+
+SeaORM default features remain disabled because this service uses PostgreSQL only. The locked graph excludes SQLx MySQL, SQLx SQLite, and their unused RSA authentication dependency; the flake-pinned RustSec scanner must pass without advisory exceptions.
