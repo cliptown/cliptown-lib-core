@@ -41,9 +41,9 @@ jobs:
         run: |
           rm -f Cargo.lock
           cargo generate-lockfile >lock-generation.txt 2>&1
-          cargo tree -i rsa >rsa-tree.txt 2>&1 || true
-          cargo tree -i sqlx-mysql >sqlx-mysql-tree.txt 2>&1 || true
-          cargo tree -i sqlx-sqlite >sqlx-sqlite-tree.txt 2>&1 || true
+          cargo tree --locked -e normal,build -i rsa >rsa-tree.txt 2>&1 || true
+          cargo tree --locked -e normal,build -i sqlx-mysql >sqlx-mysql-tree.txt 2>&1 || true
+          cargo tree --locked -e normal,build -i sqlx-sqlite >sqlx-sqlite-tree.txt 2>&1 || true
           cargo check --locked --all-targets
       - name: Upload regenerated lock diagnostics
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -60,11 +60,13 @@ jobs:
       - name: Verify and stage exact lockfile
         working-directory: cliptown-rust-backend.rs
         run: |
-          if grep -Fq 'name = "sqlx-mysql"' Cargo.lock || grep -Fq 'name = "sqlx-sqlite"' Cargo.lock || grep -Fq 'name = "rsa"' Cargo.lock; then
-            cat rsa-tree.txt sqlx-mysql-tree.txt sqlx-sqlite-tree.txt >&2
-            echo 'unused SQLx MySQL/SQLite/RSA packages remain in the Postgres-only graph' >&2
-            exit 1
-          fi
+          for report in rsa-tree.txt sqlx-mysql-tree.txt sqlx-sqlite-tree.txt; do
+            if grep -Eq '^(rsa|sqlx-mysql|sqlx-sqlite) v[0-9]' "$report"; then
+              cat "$report" >&2
+              echo 'unused database or RSA package entered the active Postgres dependency graph' >&2
+              exit 1
+            fi
+          done
           rm .github/workflows/apply-seaorm-type-lock-once.yml
       - name: Commit exact lockfile
         working-directory: cliptown-rust-backend.rs
