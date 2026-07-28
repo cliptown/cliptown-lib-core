@@ -49,6 +49,17 @@ jobs:
       - name: Verify dependency graph
         working-directory: cliptown-rust-backend.rs
         run: cargo metadata --locked --format-version 1 --no-deps >/dev/null
+      - name: Enforce Postgres-only active dependency graph
+        working-directory: cliptown-rust-backend.rs
+        run: |
+          for package in rsa sqlx-mysql sqlx-sqlite; do
+            report=$(cargo tree --locked -e normal,build -i "$package" 2>&1 || true)
+            if grep -Eq "^${package} v[0-9]" <<<"$report"; then
+              printf '%s\n' "$report" >&2
+              echo "forbidden package $package is reachable in the active Postgres dependency graph" >&2
+              exit 1
+            fi
+          done
       - name: Check formatting
         working-directory: cliptown-rust-backend.rs
         run: cargo fmt --all --check
