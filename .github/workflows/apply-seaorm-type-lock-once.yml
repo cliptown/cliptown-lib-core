@@ -33,12 +33,30 @@ jobs:
         uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: 1.88.0
-      - name: Regenerate and verify lock graph
+      - name: Regenerate lock graph and reports
         working-directory: cliptown-rust-backend.rs
         run: |
           rm -f Cargo.lock
-          cargo generate-lockfile
+          cargo generate-lockfile >lock-generation.txt 2>&1
+          cargo tree -i rsa >rsa-tree.txt 2>&1 || true
+          cargo tree -i sqlx-mysql >sqlx-mysql-tree.txt 2>&1 || true
+          cargo tree -i sqlx-sqlite >sqlx-sqlite-tree.txt 2>&1 || true
+      - name: Upload regenerated lock diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: cliptown-seaorm-type-lock
+          path: |
+            cliptown-rust-backend.rs/Cargo.lock
+            cliptown-rust-backend.rs/lock-generation.txt
+            cliptown-rust-backend.rs/rsa-tree.txt
+            cliptown-rust-backend.rs/sqlx-mysql-tree.txt
+            cliptown-rust-backend.rs/sqlx-sqlite-tree.txt
+          if-no-files-found: error
+      - name: Verify and stage exact lockfile
+        working-directory: cliptown-rust-backend.rs
+        run: |
           if grep -Fq 'name = "sqlx-mysql"' Cargo.lock || grep -Fq 'name = "sqlx-sqlite"' Cargo.lock || grep -Fq 'name = "rsa"' Cargo.lock; then
+            cat rsa-tree.txt sqlx-mysql-tree.txt sqlx-sqlite-tree.txt >&2
             echo 'unused SQLx MySQL/SQLite/RSA packages remain in the Postgres-only graph' >&2
             exit 1
           fi
