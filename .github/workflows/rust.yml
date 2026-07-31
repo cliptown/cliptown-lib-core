@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: cliptown/cliptown-interfaces
-          ref: e4e957b5372dc363fe6a52559c8959f0de781efb
+          ref: ef3d5f55719e56b1a6f11d2d6464c0976aa1863d
           path: cliptown-interfaces
           persist-credentials: false
           show-progress: false
@@ -60,6 +60,9 @@ jobs:
               exit 1
             fi
           done
+      - name: Validate app-vault security schema
+        working-directory: cliptown-rust-backend.rs
+        run: python3 scripts/check-security-schema.py
       - name: Check formatting
         working-directory: cliptown-rust-backend.rs
         run: cargo fmt --all --check
