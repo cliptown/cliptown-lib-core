@@ -8,6 +8,7 @@ Rust API service for encrypted ClipTown synchronization. The current foundation 
 - PostgreSQL/Supabase and R2 store opaque ciphertext plus bounded routing/integrity metadata.
 - Signal Protocol sessions enroll devices and deliver small wrapped account/clip/object/application-vault keys; large objects use chunked AEAD with random content keys.
 - 3FA authenticator records use a separate opaque application-vault trust domain and never become clipboard history, search, RAG, preview, paste, pin, notification, export, or ordinary retention data.
+- Application-vault logical clocks must fit PostgreSQL `BIGINT`, and backend policy may require a shorter proof lifetime than the five-minute wire-contract maximum.
 - A 3FA step-up proof is single-use and bound to one subject, initiating device, challenge, action, method, route, target, body hash, issuer key, and expiration. It is never a primary login or reusable bearer token.
 - Backup email and phone OTP are recovery/step-up channels only.
 - Biometrics remain in platform authenticators; a six-digit PIN is local-only and never an encryption key or server credential.
