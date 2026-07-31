@@ -715,12 +715,22 @@ mod tests {
             max_lifetime_seconds: 60,
             ..StepUpPolicy::default()
         };
+        let bounded_challenge = StepUpChallenge {
+            created_at_unix_seconds: proof.issued_at.timestamp(),
+            expires_at_unix_seconds: proof.issued_at.timestamp() + 60,
+            ..challenge()
+        };
+        let overlong_proof = ExternalStepUpProof {
+            issued_at: proof.issued_at - chrono::Duration::seconds(30),
+            expires_at: proof.issued_at + chrono::Duration::seconds(60),
+            ..proof.clone()
+        };
         assert_eq!(
             validate_step_up_authorization(
                 now,
                 &request_context(),
-                &challenge(),
-                &proof,
+                &bounded_challenge,
+                &overlong_proof,
                 active_device(),
                 short_policy,
                 &AcceptSignatures,
