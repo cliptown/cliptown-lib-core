@@ -355,6 +355,25 @@ CREATE TABLE IF NOT EXISTS cliptown.app_vault_applications (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now() CHECK (updated_at >= created_at)
 );
 
+CREATE OR REPLACE FUNCTION cliptown.app_vault_application_allows(
+    p_app_id TEXT,
+    p_namespace TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, cliptown
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM cliptown.app_vault_applications AS application
+        WHERE application.app_id = p_app_id
+          AND application.enabled
+          AND application.allowed_namespaces @> jsonb_build_array(p_namespace)
+    )
+$$;
+
 INSERT INTO cliptown.app_vault_applications (
     app_id,
     enabled,
@@ -698,13 +717,11 @@ CREATE POLICY app_vault_mutations_active_device_insert
         AND EXISTS (
             SELECT 1
             FROM cliptown.devices AS current_device
-            JOIN cliptown.app_vault_applications AS application
-              ON application.app_id = app_vault_mutations.app_id
             WHERE current_device.user_id = cliptown.current_user_id()
               AND current_device.id = cliptown.current_device_id()
               AND current_device.lifecycle_state = 'active'
-              AND application.enabled
         )
+        AND cliptown.app_vault_application_allows(app_id, namespace)
     );
 
 DROP POLICY IF EXISTS app_vault_record_heads_active_device_select
@@ -735,7 +752,7 @@ CREATE POLICY external_step_up_challenges_initiating_device_select
 
 REVOKE ALL ON TABLE cliptown.device_verification_keys FROM PUBLIC;
 REVOKE ALL ON TABLE cliptown.app_vault_applications FROM PUBLIC;
-GRANT SELECT ON TABLE cliptown.app_vault_applications TO PUBLIC;
+GRANT EXECUTE ON FUNCTION cliptown.app_vault_application_allows(TEXT, TEXT) TO PUBLIC;
 REVOKE ALL ON TABLE cliptown.app_vault_mutations FROM PUBLIC;
 REVOKE ALL ON TABLE cliptown.app_vault_record_heads FROM PUBLIC;
 REVOKE ALL ON TABLE cliptown.external_step_up_challenges FROM PUBLIC;

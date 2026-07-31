@@ -12,6 +12,7 @@ required = (
     "CREATE OR REPLACE FUNCTION cliptown.current_device_id()",
     "CREATE TABLE IF NOT EXISTS cliptown.device_verification_keys",
     "CREATE TABLE IF NOT EXISTS cliptown.app_vault_applications",
+    "CREATE OR REPLACE FUNCTION cliptown.app_vault_application_allows(",
     "CREATE TABLE IF NOT EXISTS cliptown.app_vault_mutations",
     "CREATE TABLE IF NOT EXISTS cliptown.app_vault_record_heads",
     "CREATE TABLE IF NOT EXISTS cliptown.external_step_up_challenges",
@@ -75,6 +76,11 @@ proof = table_block("external_step_up_proofs")
 for forbidden in ("access_token", "refresh_token", "cookie", "password", "otp_code", "vault_key"):
     if forbidden in proof:
         raise SystemExit(f"external_step_up_proofs became a credential container: {forbidden}")
+
+if "GRANT SELECT ON TABLE cliptown.app_vault_applications TO PUBLIC" in text:
+    raise SystemExit("application policy rows must not be visible through a PUBLIC table grant")
+if "SET search_path = pg_catalog, cliptown" not in text:
+    raise SystemExit("security-definer helpers must use a fixed search path")
 
 if "FOR UPDATE OF challenge, proof" not in text:
     raise SystemExit("step-up consumption must lock the challenge and proof together")
