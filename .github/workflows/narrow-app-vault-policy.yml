@@ -1,0 +1,133 @@
+name: narrow-app-vault-policy
+
+on:
+  push:
+    branches:
+      - agent/den-44-app-vault-step-up-backend
+
+permissions:
+  contents: write
+
+jobs:
+  narrow-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Replace table visibility with a fixed-search-path boolean helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          schema_path = Path("schema/schema.sql")
+          schema = schema_path.read_text()
+          table_end = """CREATE TABLE IF NOT EXISTS cliptown.app_vault_applications (
+              app_id TEXT PRIMARY KEY CHECK (
+                  char_length(app_id) BETWEEN 1 AND 128
+                  AND app_id ~ '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+              ),
+              enabled BOOLEAN NOT NULL DEFAULT false,
+              allowed_namespaces JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (
+                  jsonb_typeof(allowed_namespaces) = 'array'
+              ),
+              max_batch_size INTEGER NOT NULL CHECK (max_batch_size BETWEEN 1 AND 500),
+              max_ciphertext_base64_length INTEGER NOT NULL CHECK (
+                  max_ciphertext_base64_length BETWEEN 1 AND 699052
+              ),
+              created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+              updated_at TIMESTAMPTZ NOT NULL DEFAULT now() CHECK (updated_at >= created_at)
+          );
+          """
+          helper = table_end + """
+          CREATE OR REPLACE FUNCTION cliptown.app_vault_application_allows(
+              p_app_id TEXT,
+              p_namespace TEXT
+          )
+          RETURNS BOOLEAN
+          LANGUAGE SQL
+          STABLE
+          SECURITY DEFINER
+          SET search_path = pg_catalog, cliptown
+          AS $$
+              SELECT EXISTS (
+                  SELECT 1
+                  FROM cliptown.app_vault_applications AS application
+                  WHERE application.app_id = p_app_id
+                    AND application.enabled
+                    AND application.allowed_namespaces @> jsonb_build_array(p_namespace)
+              )
+          $$;
+          """
+          if "CREATE OR REPLACE FUNCTION cliptown.app_vault_application_allows(" not in schema:
+              if table_end not in schema:
+                  raise SystemExit("app-vault application table block was not found")
+              schema = schema.replace(table_end, helper, 1)
+
+          old_policy = """        AND EXISTS (
+                      SELECT 1
+                      FROM cliptown.devices AS current_device
+                      JOIN cliptown.app_vault_applications AS application
+                        ON application.app_id = app_vault_mutations.app_id
+                      WHERE current_device.user_id = cliptown.current_user_id()
+                        AND current_device.id = cliptown.current_device_id()
+                        AND current_device.lifecycle_state = 'active'
+                        AND application.enabled
+                  )
+          """
+          new_policy = """        AND EXISTS (
+                      SELECT 1
+                      FROM cliptown.devices AS current_device
+                      WHERE current_device.user_id = cliptown.current_user_id()
+                        AND current_device.id = cliptown.current_device_id()
+                        AND current_device.lifecycle_state = 'active'
+                  )
+                  AND cliptown.app_vault_application_allows(app_id, namespace)
+          """
+          if old_policy in schema:
+              schema = schema.replace(old_policy, new_policy, 1)
+          elif "AND cliptown.app_vault_application_allows(app_id, namespace)" not in schema:
+              raise SystemExit("app-vault insert policy block was not found")
+
+          schema = schema.replace(
+              "REVOKE ALL ON TABLE cliptown.app_vault_applications FROM PUBLIC;\n"
+              "GRANT SELECT ON TABLE cliptown.app_vault_applications TO PUBLIC;\n",
+              "REVOKE ALL ON TABLE cliptown.app_vault_applications FROM PUBLIC;\n"
+              "GRANT EXECUTE ON FUNCTION cliptown.app_vault_application_allows(TEXT, TEXT) TO PUBLIC;\n",
+              1,
+          )
+          if "GRANT SELECT ON TABLE cliptown.app_vault_applications TO PUBLIC" in schema:
+              raise SystemExit("broad app-vault application table visibility remains")
+          schema_path.write_text(schema)
+
+          checker_path = Path("scripts/check-security-schema.py")
+          checker = checker_path.read_text()
+          checker = checker.replace(
+              '    "CREATE TABLE IF NOT EXISTS cliptown.app_vault_applications",\n',
+              '    "CREATE TABLE IF NOT EXISTS cliptown.app_vault_applications",\n'
+              '    "CREATE OR REPLACE FUNCTION cliptown.app_vault_application_allows(",\n',
+              1,
+          )
+          sentinel = 'if "FOR UPDATE OF challenge, proof" not in text:\n'
+          guard = '''if "GRANT SELECT ON TABLE cliptown.app_vault_applications TO PUBLIC" in text:\n    raise SystemExit("application policy rows must not be visible through a PUBLIC table grant")\nif "SET search_path = pg_catalog, cliptown" not in text:\n    raise SystemExit("security-definer helpers must use a fixed search path")\n\n'''
+          if guard not in checker:
+              if sentinel not in checker:
+                  raise SystemExit("schema checker insertion point was not found")
+              checker = checker.replace(sentinel, guard + sentinel, 1)
+          checker_path.write_text(checker)
+
+          Path(".github/workflows/narrow-app-vault-policy.yml").unlink()
+          PY
+          python3 scripts/check-security-schema.py
+          git diff --check
+      - name: Commit narrowed policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "DEN-44 narrow app-vault RLS policy visibility"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
