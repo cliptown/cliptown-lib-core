@@ -1,4 +1,5 @@
 pub mod account_security;
+pub mod app_vault;
 pub mod encrypted_objects;
 pub mod entity;
 
