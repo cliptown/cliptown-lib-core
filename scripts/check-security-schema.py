@@ -18,6 +18,9 @@ required = (
     "CREATE TABLE IF NOT EXISTS cliptown.external_step_up_challenges",
     "CREATE TABLE IF NOT EXISTS cliptown.external_step_up_proofs",
     "CREATE OR REPLACE FUNCTION cliptown.consume_external_step_up(",
+    "app_vault_record_heads_mutation_identity_fk",
+    "transaction_timestamp()",
+    "'app_vault_key'",
     "ALTER TABLE cliptown.app_vault_mutations ENABLE ROW LEVEL SECURITY",
     "CREATE POLICY app_vault_mutations_active_device_select",
     "CREATE POLICY app_vault_mutations_active_device_insert",
@@ -81,6 +84,15 @@ if "GRANT SELECT ON TABLE cliptown.app_vault_applications TO PUBLIC" in text:
     raise SystemExit("application policy rows must not be visible through a PUBLIC table grant")
 if "SET search_path = pg_catalog, cliptown" not in text:
     raise SystemExit("security-definer helpers must use a fixed search path")
+
+if "p_now TIMESTAMPTZ" in text:
+    raise SystemExit("proof consumption must use transaction time, not caller-controlled time")
+if "app_vault_record_heads_mutation_identity_fk" not in text:
+    raise SystemExit("record heads must bind every identity and ordering field to a mutation")
+policy_start = text.index("CREATE POLICY external_step_up_challenges_initiating_device_select")
+policy_end = text.index(";", policy_start)
+if "lifecycle_state = 'active'" not in text[policy_start:policy_end]:
+    raise SystemExit("revoked devices must not read pending step-up challenges")
 
 if "FOR UPDATE OF challenge, proof" not in text:
     raise SystemExit("step-up consumption must lock the challenge and proof together")

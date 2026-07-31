@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS cliptown.device_mailbox (
     message_number NUMERIC(20, 0) NOT NULL CHECK (message_number >= 0),
     purpose TEXT NOT NULL CHECK (purpose IN (
         'account_key_transfer', 'clip_key', 'object_key', 'device_control',
-        'recovery_package', 'acknowledgement'
+        'recovery_package', 'acknowledgement', 'app_vault_key'
     )),
     created_at TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL CHECK (
@@ -440,6 +440,17 @@ CREATE TABLE IF NOT EXISTS cliptown.app_vault_mutations (
     received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (user_id, app_id, mutation_id),
     UNIQUE (user_id, app_id, mutation_id, server_sequence),
+    CONSTRAINT app_vault_mutations_head_identity_unique UNIQUE (
+        user_id,
+        app_id,
+        namespace,
+        opaque_record_id,
+        mutation_id,
+        server_sequence,
+        logical_clock,
+        source_device_id,
+        updated_at
+    ),
     CONSTRAINT app_vault_mutations_source_device_user_fk
         FOREIGN KEY (user_id, source_device_id)
         REFERENCES cliptown.devices(user_id, id) ON DELETE RESTRICT,
@@ -484,10 +495,27 @@ CREATE TABLE IF NOT EXISTS cliptown.app_vault_record_heads (
     source_device_id UUID NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (user_id, app_id, namespace, opaque_record_id),
-    CONSTRAINT app_vault_record_heads_mutation_fk
-        FOREIGN KEY (user_id, app_id, mutation_id, server_sequence)
-        REFERENCES cliptown.app_vault_mutations (
-            user_id, app_id, mutation_id, server_sequence
+    CONSTRAINT app_vault_record_heads_mutation_identity_fk
+        FOREIGN KEY (
+            user_id,
+            app_id,
+            namespace,
+            opaque_record_id,
+            mutation_id,
+            server_sequence,
+            logical_clock,
+            source_device_id,
+            updated_at
+        ) REFERENCES cliptown.app_vault_mutations (
+            user_id,
+            app_id,
+            namespace,
+            opaque_record_id,
+            mutation_id,
+            server_sequence,
+            logical_clock,
+            source_device_id,
+            updated_at
         ) ON DELETE CASCADE,
     CONSTRAINT app_vault_record_heads_source_device_user_fk
         FOREIGN KEY (user_id, source_device_id)
@@ -510,14 +538,17 @@ CREATE TABLE IF NOT EXISTS cliptown.external_step_up_challenges (
         AND normalized_route NOT LIKE '%?%'
         AND normalized_route NOT LIKE '%#%'
         AND normalized_route NOT LIKE '%//%'
-        AND normalized_route NOT LIKE '%/../%'
-        AND normalized_route NOT LIKE '%/./%'
+        AND normalized_route !~ '(^|/)\.{1,2}($|/)'
     ),
     target_resource_id TEXT CHECK (
-        target_resource_id IS NULL OR char_length(target_resource_id) BETWEEN 1 AND 128
+        target_resource_id IS NULL OR (
+            char_length(target_resource_id) BETWEEN 1 AND 128
+            AND target_resource_id ~ '^[A-Za-z0-9._:-]+$'
+        )
     ),
     request_body_sha256_base64 TEXT NOT NULL CHECK (
         octet_length(request_body_sha256_base64) BETWEEN 43 AND 44
+        AND request_body_sha256_base64 ~ '^[A-Za-z0-9+/_-]{43}=?$'
     ),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at TIMESTAMPTZ NOT NULL CHECK (
@@ -590,17 +621,17 @@ CREATE OR REPLACE FUNCTION cliptown.consume_external_step_up(
     p_method TEXT,
     p_normalized_route TEXT,
     p_target_resource_id TEXT,
-    p_request_body_sha256_base64 TEXT,
-    p_now TIMESTAMPTZ
+    p_request_body_sha256_base64 TEXT
 )
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, cliptown
 AS $$
+DECLARE
+    v_now TIMESTAMPTZ := transaction_timestamp();
 BEGIN
-    IF p_now IS NULL
-        OR p_user_id IS DISTINCT FROM cliptown.current_user_id()
+    IF p_user_id IS DISTINCT FROM cliptown.current_user_id()
         OR p_initiating_device_id IS DISTINCT FROM cliptown.current_device_id()
     THEN
         RETURN false;
@@ -625,8 +656,8 @@ BEGIN
       AND challenge.audience = 'cliptown'
       AND challenge.consumed_at IS NULL
       AND challenge.invalidated_at IS NULL
-      AND challenge.created_at <= p_now + INTERVAL '5 minutes'
-      AND challenge.expires_at > p_now
+      AND challenge.created_at <= v_now + INTERVAL '5 minutes'
+      AND challenge.expires_at > v_now
       AND device.lifecycle_state = 'active'
       AND proof.proof_id = p_proof_id
       AND proof.issuer = 'https://3fa.app'
@@ -634,10 +665,10 @@ BEGIN
       AND proof.audience = challenge.audience
       AND proof.action = challenge.action
       AND proof.issued_at >= challenge.created_at - INTERVAL '5 minutes'
-      AND proof.issued_at <= p_now + INTERVAL '5 minutes'
+      AND proof.issued_at <= v_now + INTERVAL '5 minutes'
       AND proof.expires_at <= challenge.expires_at
-      AND proof.expires_at > p_now
-      AND proof.verified_at <= p_now
+      AND proof.expires_at > v_now
+      AND proof.verified_at <= v_now
       AND proof.consumed_at IS NULL
     FOR UPDATE OF challenge, proof;
 
@@ -646,7 +677,7 @@ BEGIN
     END IF;
 
     UPDATE cliptown.external_step_up_challenges
-    SET consumed_at = p_now,
+    SET consumed_at = v_now,
         consumed_proof_id = p_proof_id
     WHERE id = p_challenge_id
       AND user_id = p_user_id
@@ -654,17 +685,25 @@ BEGIN
       AND invalidated_at IS NULL;
 
     IF NOT FOUND THEN
-        RETURN false;
+        RAISE EXCEPTION USING
+            ERRCODE = '40001',
+            MESSAGE = 'external step-up challenge consumption invariant violated';
     END IF;
 
     UPDATE cliptown.external_step_up_proofs
-    SET consumed_at = p_now
+    SET consumed_at = v_now
     WHERE proof_id = p_proof_id
       AND user_id = p_user_id
       AND challenge_id = p_challenge_id
       AND consumed_at IS NULL;
 
-    RETURN FOUND;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '40001',
+            MESSAGE = 'external step-up proof consumption invariant violated';
+    END IF;
+
+    RETURN true;
 END;
 $$;
 
@@ -748,6 +787,13 @@ CREATE POLICY external_step_up_challenges_initiating_device_select
     USING (
         user_id = cliptown.current_user_id()
         AND initiating_device_id = cliptown.current_device_id()
+        AND EXISTS (
+            SELECT 1
+            FROM cliptown.devices AS current_device
+            WHERE current_device.user_id = cliptown.current_user_id()
+              AND current_device.id = cliptown.current_device_id()
+              AND current_device.lifecycle_state = 'active'
+        )
     );
 
 REVOKE ALL ON TABLE cliptown.device_verification_keys FROM PUBLIC;
@@ -759,7 +805,7 @@ REVOKE ALL ON TABLE cliptown.external_step_up_challenges FROM PUBLIC;
 REVOKE ALL ON TABLE cliptown.external_step_up_proofs FROM PUBLIC;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA cliptown FROM PUBLIC;
 REVOKE ALL ON FUNCTION cliptown.consume_external_step_up(
-    UUID, UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TIMESTAMPTZ
+    UUID, UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT
 ) FROM PUBLIC;
 
 -- END DEN-44 APP VAULT AND EXTERNAL STEP-UP

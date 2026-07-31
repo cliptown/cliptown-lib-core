@@ -128,6 +128,20 @@ The function is `SECURITY DEFINER` with a fixed search path and has no public
 execute grant. Deployment must grant it only to the backend database role. End
 users and anonymous Supabase roles must not call it directly.
 
+## Final integrity invariants
+
+The Signal mailbox accepts the versioned `app_vault_key` purpose from the merged
+interface contract. A record-head foreign key includes namespace, opaque record
+id, mutation id, server sequence, logical clock, source device, and update time;
+a privileged repository bug therefore cannot point a head at a different
+mutation while copying only its sequence.
+
+Proof consumption derives time from PostgreSQL `transaction_timestamp()` rather
+than a caller parameter. After locking the challenge and proof, either both
+terminal markers are written or an invariant exception aborts the statement.
+Revoked or suspended initiating devices cannot read pending challenges through
+RLS.
+
 ## Required production work
 
 Before routes are enabled:
