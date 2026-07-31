@@ -115,6 +115,7 @@ pub enum PolicyError {
     FutureMutation,
     DuplicateMutation,
     DuplicateRecordClock,
+    LogicalClockOutOfRange,
     SignatureRejected,
     InvalidRequestContext,
     InvalidChallenge,
@@ -126,6 +127,7 @@ pub enum PolicyError {
     ProofContextMismatch,
     ProofNotYetValid,
     ProofExpired,
+    ProofLifetimeExceeded,
     ProofPredatesChallenge,
     ProofOutlivesChallenge,
 }
@@ -145,6 +147,7 @@ impl fmt::Display for PolicyError {
             Self::FutureMutation => "mutation timestamp exceeds allowed clock skew",
             Self::DuplicateMutation => "app-vault batch repeats a mutation identifier",
             Self::DuplicateRecordClock => "app-vault batch repeats a record clock",
+            Self::LogicalClockOutOfRange => "app-vault logical clock exceeds PostgreSQL BIGINT",
             Self::SignatureRejected => "cryptographic signature verification failed",
             Self::InvalidRequestContext => "protected request context is invalid",
             Self::InvalidChallenge => "step-up challenge is invalid",
@@ -156,6 +159,7 @@ impl fmt::Display for PolicyError {
             Self::ProofContextMismatch => "external step-up proof does not match its challenge",
             Self::ProofNotYetValid => "external step-up proof is not yet valid",
             Self::ProofExpired => "external step-up proof has expired",
+            Self::ProofLifetimeExceeded => "external step-up proof exceeds local policy lifetime",
             Self::ProofPredatesChallenge => "external step-up proof predates its challenge",
             Self::ProofOutlivesChallenge => "external step-up proof outlives its challenge",
         };
@@ -238,6 +242,9 @@ where
         )) {
             return Err(PolicyError::DuplicateRecordClock);
         }
+        if mutation.logical_clock > i64::MAX as u64 {
+            return Err(PolicyError::LogicalClockOutOfRange);
+        }
         verifier.verify(mutation)?;
         highest_logical_clock = highest_logical_clock.max(mutation.logical_clock);
     }
@@ -292,6 +299,12 @@ where
 
     let proof_issued_at = proof.issued_at.timestamp();
     let proof_expires_at = proof.expires_at.timestamp();
+    let proof_lifetime = proof_expires_at
+        .checked_sub(proof_issued_at)
+        .ok_or(PolicyError::InvalidProof)?;
+    if proof_lifetime <= 0 || proof_lifetime > policy.max_lifetime_seconds {
+        return Err(PolicyError::ProofLifetimeExceeded);
+    }
     let latest_allowed_issue_time = now_unix_seconds
         .checked_add(policy.max_clock_skew_seconds)
         .ok_or(PolicyError::InvalidClock)?;
@@ -331,9 +344,7 @@ fn validate_active_device(device: AuthenticatedDevice<'_>) -> Result<(), PolicyE
     Ok(())
 }
 
-fn validate_protected_request(
-    request: &ProtectedRequestContext<'_>,
-) -> Result<(), PolicyError> {
+fn validate_protected_request(request: &ProtectedRequestContext<'_>) -> Result<(), PolicyError> {
     if !is_portable_identifier(request.subject)
         || !is_portable_identifier(request.initiating_device_id)
         || !is_sensitive_method(request.method)
@@ -353,9 +364,7 @@ fn validate_challenge(
     challenge: &StepUpChallenge<'_>,
     policy: StepUpPolicy<'_>,
 ) -> Result<(), PolicyError> {
-    if now_unix_seconds < 0
-        || policy.max_lifetime_seconds <= 0
-        || policy.max_clock_skew_seconds < 0
+    if now_unix_seconds < 0 || policy.max_lifetime_seconds <= 0 || policy.max_clock_skew_seconds < 0
     {
         return Err(PolicyError::InvalidClock);
     }
@@ -573,11 +582,7 @@ mod tests {
 
     #[test]
     fn app_vault_rejects_sibling_credentials_and_duplicate_mutations() {
-        let wrong_device = push_request(vec![mutation(
-            "mutation-1",
-            "another-cliptown-device",
-            7,
-        )]);
+        let wrong_device = push_request(vec![mutation("mutation-1", "another-cliptown-device", 7)]);
         let now = wrong_device.mutations[0].updated_at.timestamp() + 1;
         assert_eq!(
             validate_app_vault_push(
@@ -606,15 +611,28 @@ mod tests {
             ),
             Err(PolicyError::DuplicateMutation)
         );
+
+        let out_of_range = push_request(vec![mutation(
+            "mutation-out-of-range",
+            "cliptown-device-a",
+            i64::MAX as u64 + 1,
+        )]);
+        assert_eq!(
+            validate_app_vault_push(
+                now,
+                THREE_FA_APP_ID,
+                &out_of_range,
+                active_device(),
+                AppVaultPolicy::default(),
+                &AcceptSignatures,
+            ),
+            Err(PolicyError::LogicalClockOutOfRange)
+        );
     }
 
     #[test]
     fn revoked_devices_cannot_push_or_approve_sensitive_requests() {
-        let request = push_request(vec![mutation(
-            "mutation-1",
-            "cliptown-device-a",
-            7,
-        )]);
+        let request = push_request(vec![mutation("mutation-1", "cliptown-device-a", 7)]);
         let revoked = AuthenticatedDevice {
             lifecycle_state: DeviceLifecycleState::Revoked,
             ..active_device()
@@ -691,6 +709,23 @@ mod tests {
                 &RejectSignatures,
             ),
             Err(PolicyError::SignatureRejected)
+        );
+
+        let short_policy = StepUpPolicy {
+            max_lifetime_seconds: 60,
+            ..StepUpPolicy::default()
+        };
+        assert_eq!(
+            validate_step_up_authorization(
+                now,
+                &request_context(),
+                &challenge(),
+                &proof,
+                active_device(),
+                short_policy,
+                &AcceptSignatures,
+            ),
+            Err(PolicyError::ProofLifetimeExceeded)
         );
     }
 
