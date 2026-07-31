@@ -1,15 +1,17 @@
 # ClipTown Rust backend
 
-Rust API service for encrypted ClipTown synchronization. The current foundation exposes service information, liveness, and readiness contracts. DEN-42/DEN-45/DEN-47/DEN-51 add reviewed account-security, Signal Protocol relay, PostgreSQL/Supabase, and encrypted Cloudflare R2 storage foundations without enabling unauthenticated placeholder routes.
+Rust API service for encrypted ClipTown synchronization. The current foundation exposes service information, liveness, and readiness contracts. DEN-42/DEN-44/DEN-45/DEN-47/DEN-51 add reviewed account-security, Signal Protocol relay, isolated application-vault, PostgreSQL/Supabase, and encrypted Cloudflare R2 foundations without enabling unauthenticated placeholder routes.
 
 ## Security model
 
 - Flutter encrypts clipboard text, metadata, images, and files before upload.
 - PostgreSQL/Supabase and R2 store opaque ciphertext plus bounded routing/integrity metadata.
-- Signal Protocol sessions enroll devices and deliver small wrapped account/clip/object keys; large objects use chunked AEAD with random content keys.
+- Signal Protocol sessions enroll devices and deliver small wrapped account/clip/object/application-vault keys; large objects use chunked AEAD with random content keys.
+- 3FA authenticator records use a separate opaque application-vault trust domain and never become clipboard history, search, RAG, preview, paste, pin, notification, export, or ordinary retention data.
+- A 3FA step-up proof is single-use and bound to one subject, initiating device, challenge, action, method, route, target, body hash, issuer key, and expiration. It is never a primary login or reusable bearer token.
 - Backup email and phone OTP are recovery/step-up channels only.
 - Biometrics remain in platform authenticators; a six-digit PIN is local-only and never an encryption key or server credential.
-- See [`docs/security-storage.md`](docs/security-storage.md).
+- See [`docs/security-storage.md`](docs/security-storage.md) and [`docs/app-vault-step-up.md`](docs/app-vault-step-up.md).
 
 ## Run
 
@@ -24,6 +26,7 @@ The service does not run database migrations at startup. PostgreSQL desired stat
 ```sh
 cargo metadata --locked --format-version 1 --no-deps
 cargo tree --locked -e normal,build -i rsa
+python3 scripts/check-security-schema.py
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
@@ -31,6 +34,6 @@ cargo build --locked --release
 nix develop -c agent-check audit
 ```
 
-GitHub Actions runs the Rust checks against Rust 1.88 and stable. Both native and Nix CI resolve `cliptown-interfaces` at commit `e4e957b5372dc363fe6a52559c8959f0de781efb`, avoiding a moving sibling dependency while retaining the repository's declared Rust 1.88 minimum required by the locked SeaORM/ICU/time dependency graph.
+GitHub Actions runs the Rust checks against Rust 1.88 and stable. Both native and Nix CI resolve `cliptown-interfaces` at commit `ef3d5f55719e56b1a6f11d2d6464c0976aa1863d`, avoiding a moving sibling dependency while consuming the merged application-vault and external step-up contracts.
 
 SeaORM default features remain disabled because this service uses PostgreSQL only. Cargo may retain optional SQLx MySQL/SQLite package metadata in `Cargo.lock`, but native and Nix CI fail if `rsa`, `sqlx-mysql`, or `sqlx-sqlite` becomes reachable in the active normal/build dependency graph. RustSec advisory `RUSTSEC-2023-0071` is ignored only after that reachability proof; every other advisory remains fail-closed.
