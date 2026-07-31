@@ -12,7 +12,7 @@ cache_root="${NIX_AGENT_CACHE_ROOT:-$repo_root/.cache/nix-agent}"
 workspace_root="$cache_root/workspace"
 backend_repo="$workspace_root/cliptown-rust-backend.rs"
 interfaces_repo="$workspace_root/cliptown-interfaces"
-interfaces_revision="e4e957b5372dc363fe6a52559c8959f0de781efb"
+interfaces_revision="ef3d5f55719e56b1a6f11d2d6464c0976aa1863d"
 rust_toolchain="1.88.0"
 rsa_advisory="RUSTSEC-2023-0071"
 
@@ -109,6 +109,7 @@ run_stage() {
       shellcheck .nix/agent-check.sh
       shfmt -i 2 -ci -d .nix/agent-check.sh
       actionlint .github/workflows/rust.yml .github/workflows/nix.yml
+      python3 scripts/check-security-schema.py
       nix flake check --show-trace
       rustc --version
       cargo --version
