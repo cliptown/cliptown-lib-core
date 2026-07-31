@@ -1,0 +1,320 @@
+name: finalize-den-44-integrity
+
+on:
+  push:
+    branches:
+      - agent/den-44-app-vault-step-up-backend
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Bind record heads, mailbox purpose, and transaction time
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          schema_path = Path("schema/schema.sql")
+          schema = schema_path.read_text()
+
+          replacements = [
+              (
+                  """        'account_key_transfer', 'clip_key', 'object_key', 'device_control',
+                  'recovery_package', 'acknowledgement'
+          """,
+                  """        'account_key_transfer', 'clip_key', 'object_key', 'device_control',
+                  'recovery_package', 'acknowledgement', 'app_vault_key'
+          """,
+                  "Signal mailbox purpose",
+              ),
+              (
+                  """    UNIQUE (user_id, app_id, mutation_id),
+              UNIQUE (user_id, app_id, mutation_id, server_sequence),
+          """,
+                  """    UNIQUE (user_id, app_id, mutation_id),
+              UNIQUE (user_id, app_id, mutation_id, server_sequence),
+              CONSTRAINT app_vault_mutations_head_identity_unique UNIQUE (
+                  user_id,
+                  app_id,
+                  namespace,
+                  opaque_record_id,
+                  mutation_id,
+                  server_sequence,
+                  logical_clock,
+                  source_device_id,
+                  updated_at
+              ),
+          """,
+                  "mutation head identity",
+              ),
+              (
+                  """    CONSTRAINT app_vault_record_heads_mutation_fk
+                  FOREIGN KEY (user_id, app_id, mutation_id, server_sequence)
+                  REFERENCES cliptown.app_vault_mutations (
+                      user_id, app_id, mutation_id, server_sequence
+                  ) ON DELETE CASCADE,
+          """,
+                  """    CONSTRAINT app_vault_record_heads_mutation_identity_fk
+                  FOREIGN KEY (
+                      user_id,
+                      app_id,
+                      namespace,
+                      opaque_record_id,
+                      mutation_id,
+                      server_sequence,
+                      logical_clock,
+                      source_device_id,
+                      updated_at
+                  ) REFERENCES cliptown.app_vault_mutations (
+                      user_id,
+                      app_id,
+                      namespace,
+                      opaque_record_id,
+                      mutation_id,
+                      server_sequence,
+                      logical_clock,
+                      source_device_id,
+                      updated_at
+                  ) ON DELETE CASCADE,
+          """,
+                  "record-head foreign key",
+              ),
+              (
+                  """        AND normalized_route NOT LIKE '%//%'
+                  AND normalized_route NOT LIKE '%/../%'
+                  AND normalized_route NOT LIKE '%/./%'
+          """,
+                  """        AND normalized_route NOT LIKE '%//%'
+                  AND normalized_route !~ '(^|/)\\.{1,2}($|/)'
+          """,
+                  "normalized route traversal check",
+              ),
+              (
+                  """    target_resource_id TEXT CHECK (
+                  target_resource_id IS NULL OR char_length(target_resource_id) BETWEEN 1 AND 128
+              ),
+          """,
+                  """    target_resource_id TEXT CHECK (
+                  target_resource_id IS NULL OR (
+                      char_length(target_resource_id) BETWEEN 1 AND 128
+                      AND target_resource_id ~ '^[A-Za-z0-9._:-]+$'
+                  )
+              ),
+          """,
+                  "target identifier check",
+              ),
+              (
+                  """    request_body_sha256_base64 TEXT NOT NULL CHECK (
+                  octet_length(request_body_sha256_base64) BETWEEN 43 AND 44
+              ),
+          """,
+                  """    request_body_sha256_base64 TEXT NOT NULL CHECK (
+                  octet_length(request_body_sha256_base64) BETWEEN 43 AND 44
+                  AND request_body_sha256_base64 ~ '^[A-Za-z0-9+/_-]{43}=?$'
+              ),
+          """,
+                  "request hash check",
+              ),
+          ]
+          for old, new, label in replacements:
+              if old not in schema:
+                  if new in schema:
+                      continue
+                  raise SystemExit(f"{label} insertion point was not found")
+              schema = schema.replace(old, new, 1)
+
+          function_marker = "CREATE OR REPLACE FUNCTION cliptown.consume_external_step_up("
+          function_start = schema.index(function_marker)
+          function_end = schema.index("\n$$;", function_start) + len("\n$$;")
+          function = schema[function_start:function_end]
+
+          function = function.replace(
+              "    p_request_body_sha256_base64 TEXT,\n    p_now TIMESTAMPTZ\n)",
+              "    p_request_body_sha256_base64 TEXT\n)",
+              1,
+          )
+          function = function.replace(
+              "AS $$\nBEGIN\n    IF p_now IS NULL\n        OR p_user_id",
+              "AS $$\nDECLARE\n    v_now TIMESTAMPTZ := transaction_timestamp();\nBEGIN\n    IF p_user_id",
+              1,
+          )
+          if "p_now" in function:
+              function = function.replace("p_now", "v_now")
+          if "transaction_timestamp()" not in function or "p_now" in function:
+              raise SystemExit("proof consumption still trusts caller-controlled time")
+
+          challenge_update = """    UPDATE cliptown.external_step_up_challenges
+              SET consumed_at = v_now,
+                  consumed_proof_id = p_proof_id
+              WHERE id = p_challenge_id
+                AND user_id = p_user_id
+                AND consumed_at IS NULL
+                AND invalidated_at IS NULL;
+
+              IF NOT FOUND THEN
+                  RETURN false;
+              END IF;
+
+              UPDATE cliptown.external_step_up_proofs
+          """
+          challenge_update_hardened = """    UPDATE cliptown.external_step_up_challenges
+              SET consumed_at = v_now,
+                  consumed_proof_id = p_proof_id
+              WHERE id = p_challenge_id
+                AND user_id = p_user_id
+                AND consumed_at IS NULL
+                AND invalidated_at IS NULL;
+
+              IF NOT FOUND THEN
+                  RAISE EXCEPTION USING
+                      ERRCODE = '40001',
+                      MESSAGE = 'external step-up challenge consumption invariant violated';
+              END IF;
+
+              UPDATE cliptown.external_step_up_proofs
+          """
+          if challenge_update in function:
+              function = function.replace(challenge_update, challenge_update_hardened, 1)
+          elif "challenge consumption invariant violated" not in function:
+              raise SystemExit("challenge atomicity insertion point was not found")
+
+          proof_return = """    UPDATE cliptown.external_step_up_proofs
+              SET consumed_at = v_now
+              WHERE proof_id = p_proof_id
+                AND user_id = p_user_id
+                AND challenge_id = p_challenge_id
+                AND consumed_at IS NULL;
+
+              RETURN FOUND;
+          """
+          proof_return_hardened = """    UPDATE cliptown.external_step_up_proofs
+              SET consumed_at = v_now
+              WHERE proof_id = p_proof_id
+                AND user_id = p_user_id
+                AND challenge_id = p_challenge_id
+                AND consumed_at IS NULL;
+
+              IF NOT FOUND THEN
+                  RAISE EXCEPTION USING
+                      ERRCODE = '40001',
+                      MESSAGE = 'external step-up proof consumption invariant violated';
+              END IF;
+
+              RETURN true;
+          """
+          if proof_return in function:
+              function = function.replace(proof_return, proof_return_hardened, 1)
+          elif "proof consumption invariant violated" not in function:
+              raise SystemExit("proof atomicity insertion point was not found")
+
+          schema = schema[:function_start] + function + schema[function_end:]
+
+          challenge_policy = """CREATE POLICY external_step_up_challenges_initiating_device_select
+              ON cliptown.external_step_up_challenges
+              FOR SELECT
+              USING (
+                  user_id = cliptown.current_user_id()
+                  AND initiating_device_id = cliptown.current_device_id()
+              );
+          """
+          challenge_policy_active = """CREATE POLICY external_step_up_challenges_initiating_device_select
+              ON cliptown.external_step_up_challenges
+              FOR SELECT
+              USING (
+                  user_id = cliptown.current_user_id()
+                  AND initiating_device_id = cliptown.current_device_id()
+                  AND EXISTS (
+                      SELECT 1
+                      FROM cliptown.devices AS current_device
+                      WHERE current_device.user_id = cliptown.current_user_id()
+                        AND current_device.id = cliptown.current_device_id()
+                        AND current_device.lifecycle_state = 'active'
+                  )
+              );
+          """
+          if challenge_policy in schema:
+              schema = schema.replace(challenge_policy, challenge_policy_active, 1)
+          elif challenge_policy_active not in schema:
+              raise SystemExit("active-device challenge policy insertion point was not found")
+
+          old_revoke = """REVOKE ALL ON FUNCTION cliptown.consume_external_step_up(
+              UUID, UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TIMESTAMPTZ
+          ) FROM PUBLIC;
+          """
+          new_revoke = """REVOKE ALL ON FUNCTION cliptown.consume_external_step_up(
+              UUID, UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT
+          ) FROM PUBLIC;
+          """
+          if old_revoke in schema:
+              schema = schema.replace(old_revoke, new_revoke, 1)
+          elif new_revoke not in schema:
+              raise SystemExit("proof-consumption revoke signature was not found")
+
+          schema_path.write_text(schema)
+
+          checker_path = Path("scripts/check-security-schema.py")
+          checker = checker_path.read_text()
+          required_marker = '    "CREATE OR REPLACE FUNCTION cliptown.consume_external_step_up(",\n'
+          required_additions = (
+              '    "app_vault_record_heads_mutation_identity_fk",\n'
+              '    "transaction_timestamp()",\n'
+              '    "\'app_vault_key\'",\n'
+          )
+          if "app_vault_record_heads_mutation_identity_fk" not in checker:
+              if required_marker not in checker:
+                  raise SystemExit("schema checker required-list insertion point was not found")
+              checker = checker.replace(required_marker, required_marker + required_additions, 1)
+
+          sentinel = 'if "FOR UPDATE OF challenge, proof" not in text:\n'
+          guards = '''if "p_now TIMESTAMPTZ" in text:\n    raise SystemExit("proof consumption must use transaction time, not caller-controlled time")\nif "app_vault_record_heads_mutation_identity_fk" not in text:\n    raise SystemExit("record heads must bind every identity and ordering field to a mutation")\npolicy_start = text.index("CREATE POLICY external_step_up_challenges_initiating_device_select")\npolicy_end = text.index(";", policy_start)\nif "lifecycle_state = 'active'" not in text[policy_start:policy_end]:\n    raise SystemExit("revoked devices must not read pending step-up challenges")\n\n'''
+          if "proof consumption must use transaction time" not in checker:
+              if sentinel not in checker:
+                  raise SystemExit("schema checker guard insertion point was not found")
+              checker = checker.replace(sentinel, guards + sentinel, 1)
+          checker_path.write_text(checker)
+
+          docs_path = Path("docs/app-vault-step-up.md")
+          docs = docs_path.read_text()
+          docs_marker = "## Required production work\n"
+          integrity = """## Final integrity invariants
+
+The Signal mailbox accepts the versioned `app_vault_key` purpose from the merged
+interface contract. A record-head foreign key includes namespace, opaque record
+id, mutation id, server sequence, logical clock, source device, and update time;
+a privileged repository bug therefore cannot point a head at a different
+mutation while copying only its sequence.
+
+Proof consumption derives time from PostgreSQL `transaction_timestamp()` rather
+than a caller parameter. After locking the challenge and proof, either both
+terminal markers are written or an invariant exception aborts the statement.
+Revoked or suspended initiating devices cannot read pending challenges through
+RLS.
+
+"""
+          if "## Final integrity invariants" not in docs:
+              if docs_marker not in docs:
+                  raise SystemExit("documentation insertion point was not found")
+              docs = docs.replace(docs_marker, integrity + docs_marker, 1)
+          docs_path.write_text(docs)
+
+          Path(".github/workflows/finalize-den-44-integrity.yml").unlink()
+          PY
+          python3 scripts/check-security-schema.py
+          git diff --check
+      - name: Commit final integrity review
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "DEN-44 finalize app-vault and proof-consumption integrity"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
