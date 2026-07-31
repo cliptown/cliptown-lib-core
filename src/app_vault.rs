@@ -720,11 +720,21 @@ mod tests {
             expires_at_unix_seconds: proof.issued_at.timestamp() + 60,
             ..challenge()
         };
-        let overlong_proof = ExternalStepUpProof {
-            issued_at: proof.issued_at - chrono::Duration::seconds(30),
-            expires_at: proof.issued_at + chrono::Duration::seconds(60),
-            ..proof.clone()
-        };
+        let overlong_proof: ExternalStepUpProof = serde_json::from_value(json!({
+            "protocol_version": 1,
+            "proof_id": "proof-overlong",
+            "issuer": THREE_FA_STEP_UP_ISSUER,
+            "subject": "user-1",
+            "audience": CLIPTOWN_STEP_UP_AUDIENCE,
+            "device_id": "threefa-device-a",
+            "challenge_id": "challenge-1",
+            "action": "revoke_device",
+            "issued_at": "2026-07-30T11:59:40Z",
+            "expires_at": "2026-07-30T12:01:10Z",
+            "signing_key_id": "threefa-signing-key-1",
+            "signature": "A".repeat(88)
+        }))
+        .unwrap();
         assert_eq!(
             validate_step_up_authorization(
                 now,
