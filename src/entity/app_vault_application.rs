@@ -7,6 +7,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub app_id: String,
     pub enabled: bool,
+    pub allowed_namespaces: Json,
     pub max_batch_size: i32,
     pub max_ciphertext_base64_length: i32,
     pub created_at: DateTimeWithTimeZone,
