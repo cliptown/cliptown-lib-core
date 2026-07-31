@@ -1,0 +1,89 @@
+name: apply-den-44-schema
+
+on:
+  push:
+    branches:
+      - agent/den-44-app-vault-step-up-backend
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Integrate reviewed schema and pinned interface contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          old_revision = "e4e957b5372dc363fe6a52559c8959f0de781efb"
+          new_revision = "ef3d5f55719e56b1a6f11d2d6464c0976aa1863d"
+
+          rust_ci_path = Path(".github/workflows/rust.yml")
+          rust_ci = rust_ci_path.read_text()
+          if old_revision not in rust_ci and new_revision not in rust_ci:
+              raise SystemExit("Rust CI interface pin was not found")
+          rust_ci = rust_ci.replace(old_revision, new_revision)
+          schema_step = """      - name: Validate app-vault security schema
+                working-directory: cliptown-rust-backend.rs
+                run: python3 scripts/check-security-schema.py
+          """
+          format_step = "      - name: Check formatting\n"
+          if "Validate app-vault security schema" not in rust_ci:
+              if format_step not in rust_ci:
+                  raise SystemExit("Rust CI formatting step was not found")
+              rust_ci = rust_ci.replace(format_step, schema_step + format_step, 1)
+          rust_ci_path.write_text(rust_ci)
+
+          agent_path = Path(".nix/agent-check.sh")
+          agent = agent_path.read_text()
+          if old_revision not in agent and new_revision not in agent:
+              raise SystemExit("Nix agent interface pin was not found")
+          agent = agent.replace(old_revision, new_revision)
+          actionlint = "      actionlint .github/workflows/rust.yml .github/workflows/nix.yml\n"
+          schema_check = "      python3 scripts/check-security-schema.py\n"
+          if schema_check not in agent:
+              if actionlint not in agent:
+                  raise SystemExit("Nix preflight actionlint step was not found")
+              agent = agent.replace(actionlint, actionlint + schema_check, 1)
+          agent_path.write_text(agent)
+
+          fragment_path = Path("schema/app-vault-step-up.fragment.sql")
+          fragment = fragment_path.read_text()
+          fragment = fragment.replace(
+              "ON application.app_id = app_id",
+              "ON application.app_id = app_vault_mutations.app_id",
+          )
+          fragment = fragment.replace(
+              "REVOKE ALL ON TABLE cliptown.app_vault_applications FROM PUBLIC;\n",
+              "REVOKE ALL ON TABLE cliptown.app_vault_applications FROM PUBLIC;\n"
+              "GRANT SELECT ON TABLE cliptown.app_vault_applications TO PUBLIC;\n",
+          )
+
+          schema_path = Path("schema/schema.sql")
+          schema = schema_path.read_text().rstrip() + "\n"
+          marker = "-- BEGIN DEN-44 APP VAULT AND EXTERNAL STEP-UP"
+          if marker in schema:
+              raise SystemExit("DEN-44 schema marker already exists")
+          schema_path.write_text(schema + "\n" + fragment.rstrip() + "\n")
+
+          fragment_path.unlink()
+          Path(".github/workflows/apply-den-44-schema.yml").unlink()
+          PY
+          python3 scripts/check-security-schema.py
+          git diff --check
+      - name: Commit integrated desired state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "DEN-44 integrate app-vault and step-up desired state"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
