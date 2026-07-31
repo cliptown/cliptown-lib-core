@@ -1,5 +1,6 @@
 name: fix-den-44-policy-test
 
+# One-shot branch workflow; it removes itself after committing the corrected fixture.
 on:
   push:
     branches:
