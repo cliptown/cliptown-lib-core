@@ -137,7 +137,10 @@ mod tests {
 
     fn assert_invalid(mut policy: PinKdfPolicy, mutate: impl FnOnce(&mut PinKdfPolicy)) {
         mutate(&mut policy);
-        assert!(policy.validate().is_err(), "policy unexpectedly passed: {policy:?}");
+        assert!(
+            policy.validate().is_err(),
+            "policy unexpectedly passed: {policy:?}"
+        );
     }
 
     #[test]
@@ -364,14 +367,20 @@ mod tests {
                 ..RecoveryOtpPolicy::default()
             },
         ] {
-            assert!(invalid.validate().is_err(), "policy unexpectedly passed: {invalid:?}");
+            assert!(
+                invalid.validate().is_err(),
+                "policy unexpectedly passed: {invalid:?}"
+            );
         }
     }
 
     #[test]
     fn recovery_codes_accept_only_bounded_ascii_digits() {
         for valid in ["000000", "123456", "1234567890"] {
-            assert!(recovery_code_is_well_formed(valid), "valid code rejected: {valid:?}");
+            assert!(
+                recovery_code_is_well_formed(valid),
+                "valid code rejected: {valid:?}"
+            );
         }
         for invalid in [
             "",
