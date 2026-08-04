@@ -187,9 +187,10 @@ pub enum TransferDirection {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
 pub enum CipherAlgorithm {
+    #[serde(rename = "xchacha20poly1305-v1")]
     Xchacha20poly1305V1,
+    #[serde(rename = "aes-256-gcm-v1")]
     Aes256GcmV1,
 }
 
@@ -619,6 +620,18 @@ mod tests {
             encrypted_metadata: Some(envelope()),
             expires_at_unix_seconds: NOW + 3600,
         }
+    }
+
+    #[test]
+    fn cipher_algorithm_wire_names_match_the_openapi_contract() {
+        assert_eq!(
+            serde_json::to_string(&CipherAlgorithm::Xchacha20poly1305V1).unwrap(),
+            r#""xchacha20poly1305-v1""#
+        );
+        assert_eq!(
+            serde_json::to_string(&CipherAlgorithm::Aes256GcmV1).unwrap(),
+            r#""aes-256-gcm-v1""#
+        );
     }
 
     #[test]
