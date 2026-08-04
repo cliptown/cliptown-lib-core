@@ -364,7 +364,7 @@ pub fn authorize_owned_transfer(
     transfer: Option<OwnedTransfer<'_>>,
 ) -> Result<(), PolicyError> {
     let transfer = transfer.ok_or(PolicyError::NotFound)?;
-    if !is_uuid(&transfer.transfer_id) || transfer.subject != authorized.subject {
+    if !is_uuid(transfer.transfer_id) || transfer.subject != authorized.subject {
         return Err(PolicyError::NotFound);
     }
     Ok(())
@@ -572,6 +572,7 @@ mod tests {
     const NOW: i64 = 1_800_000_000;
     const ISSUER: &str = "https://auth.example.test";
     const DIGEST: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    type ClaimMutation = Box<dyn Fn(&mut DelegatedAuthorization)>;
 
     fn claims(scope: &str) -> DelegatedAuthorization {
         DelegatedAuthorization {
@@ -647,7 +648,7 @@ mod tests {
 
     #[test]
     fn token_identity_session_lineage_time_and_scope_fail_closed() {
-        let cases: Vec<Box<dyn Fn(&mut DelegatedAuthorization)>> = vec![
+        let cases: Vec<ClaimMutation> = vec![
             Box::new(|value| value.issuer = "https://attacker.invalid".to_owned()),
             Box::new(|value| value.audiences = vec!["other-api".to_owned()]),
             Box::new(|value| value.audiences.push("other-api".to_owned())),
