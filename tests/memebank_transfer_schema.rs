@@ -25,7 +25,10 @@ fn memebank_transfer_schema_is_subject_owned_ciphertext_only_and_revoked_from_pu
         "payload_ciphertext_base64",
         "metadata_ciphertext_base64",
     ] {
-        assert!(section.contains(required), "missing schema invariant: {required}");
+        assert!(
+            section.contains(required),
+            "missing schema invariant: {required}"
+        );
     }
 
     for forbidden in [

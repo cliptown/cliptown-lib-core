@@ -415,7 +415,10 @@ pub fn evaluate_idempotency(
 
     // A repository lookup is keyed by (subject, key). Treat any accidental
     // cross-subject value as absent so it cannot become an existence oracle.
-    if existing.subject != subject || existing.key != key || existing.expires_at_unix_seconds <= now_unix_seconds {
+    if existing.subject != subject
+        || existing.key != key
+        || existing.expires_at_unix_seconds <= now_unix_seconds
+    {
         return Ok(IdempotencyDecision::New);
     }
     if existing.operation == operation
@@ -512,9 +515,9 @@ fn is_media_type(value: &str) -> bool {
     }
     value.split('/').all(|part| {
         !part.is_empty()
-            && part.bytes().all(|byte| {
-                byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'+' | b'-')
-            })
+            && part
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'+' | b'-'))
     })
 }
 
@@ -554,9 +557,10 @@ fn is_uuid(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() == 36
         && [8, 13, 18, 23].iter().all(|index| bytes[*index] == b'-')
-        && bytes.iter().enumerate().all(|(index, byte)| {
-            [8, 13, 18, 23].contains(&index) || byte.is_ascii_hexdigit()
-        })
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| [8, 13, 18, 23].contains(&index) || byte.is_ascii_hexdigit())
 }
 
 #[cfg(test)]
@@ -643,7 +647,12 @@ mod tests {
             Box::new(|value| value.not_before_unix_seconds = NOW + 61),
             Box::new(|value| value.expires_at_unix_seconds = NOW),
             Box::new(|value| value.expires_at_unix_seconds = NOW + 901),
-            Box::new(|value| value.scopes = vec![MEMEBANK_READ_SCOPE.to_owned(), MEMEBANK_WRITE_SCOPE.to_owned()]),
+            Box::new(|value| {
+                value.scopes = vec![
+                    MEMEBANK_READ_SCOPE.to_owned(),
+                    MEMEBANK_WRITE_SCOPE.to_owned(),
+                ]
+            }),
             Box::new(|value| value.scopes = vec![MEMEBANK_DELETE_SCOPE.to_owned()]),
         ];
         for mutate in cases {
@@ -693,7 +702,10 @@ mod tests {
 
         let mut invalid = request();
         invalid.contract_version = 2;
-        assert_eq!(invalid.validate(NOW), Err(PolicyError::IncompatibleContract));
+        assert_eq!(
+            invalid.validate(NOW),
+            Err(PolicyError::IncompatibleContract)
+        );
 
         let mut invalid = request();
         invalid.source_item_id = "https://private.example/item".to_owned();
@@ -716,7 +728,10 @@ mod tests {
     fn envelope_and_json_shape_reject_plaintext_credentials_urls_and_unknown_fields() {
         let mut invalid = request();
         invalid.payload.nonce = "not base64!".to_owned();
-        assert_eq!(invalid.validate(NOW), Err(PolicyError::InvalidCipherEnvelope));
+        assert_eq!(
+            invalid.validate(NOW),
+            Err(PolicyError::InvalidCipherEnvelope)
+        );
 
         let with_plaintext = json!({
             "contract_version": 1,
@@ -749,7 +764,10 @@ mod tests {
             policy(),
         )
         .unwrap();
-        assert_eq!(authorize_owned_transfer(&authorized, None), Err(PolicyError::NotFound));
+        assert_eq!(
+            authorize_owned_transfer(&authorized, None),
+            Err(PolicyError::NotFound)
+        );
         assert_eq!(
             authorize_owned_transfer(
                 &authorized,
@@ -901,7 +919,13 @@ mod tests {
             Ok(())
         );
         assert_eq!(validate_opaque_cursor("v1.opaque_cursor-0001"), Ok(()));
-        assert_eq!(validate_opaque_cursor("../tenant"), Err(PolicyError::InvalidCursor));
-        assert_eq!(validate_opaque_cursor(&"a".repeat(513)), Err(PolicyError::InvalidCursor));
+        assert_eq!(
+            validate_opaque_cursor("../tenant"),
+            Err(PolicyError::InvalidCursor)
+        );
+        assert_eq!(
+            validate_opaque_cursor(&"a".repeat(513)),
+            Err(PolicyError::InvalidCursor)
+        );
     }
 }
