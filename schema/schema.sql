@@ -809,3 +809,164 @@ REVOKE ALL ON FUNCTION cliptown.consume_external_step_up(
 ) FROM PUBLIC;
 
 -- END DEN-44 APP VAULT AND EXTERNAL STEP-UP
+
+-- BEGIN DEN-1578 MEMEBANK TRANSFER API
+-- Subject-owned encrypted transfer queue for the versioned API boundary.
+
+CREATE TABLE IF NOT EXISTS cliptown.memebank_transfers (
+    id UUID PRIMARY KEY,
+    subject_id UUID NOT NULL REFERENCES cliptown.accounts(user_id) ON DELETE CASCADE,
+    contract_version SMALLINT NOT NULL CHECK (contract_version = 1),
+    direction TEXT NOT NULL CHECK (
+        direction IN ('memebank_to_cliptown', 'cliptown_to_memebank')
+    ),
+    state TEXT NOT NULL DEFAULT 'pending' CHECK (
+        state IN (
+            'pending', 'acknowledged', 'ignored', 'rejected', 'expired', 'cancelled'
+        )
+    ),
+    source_item_id TEXT NOT NULL CHECK (
+        char_length(source_item_id) BETWEEN 1 AND 128
+        AND source_item_id ~ '^[A-Za-z0-9._:-]+$'
+    ),
+    media_type TEXT NOT NULL CHECK (
+        char_length(media_type) BETWEEN 3 AND 128
+        AND media_type ~ '^[A-Za-z0-9.+-]+/[A-Za-z0-9.+-]+$'
+    ),
+    content_sha256_base64url TEXT NOT NULL CHECK (
+        char_length(content_sha256_base64url) BETWEEN 43 AND 44
+        AND content_sha256_base64url ~ '^[A-Za-z0-9_-]{43}=?$'
+    ),
+    content_length BIGINT NOT NULL CHECK (content_length BETWEEN 0 AND 16777216),
+    payload_algorithm TEXT NOT NULL CHECK (
+        payload_algorithm IN ('xchacha20poly1305-v1', 'aes-256-gcm-v1')
+    ),
+    payload_nonce_base64 TEXT NOT NULL CHECK (
+        char_length(payload_nonce_base64) BETWEEN 16 AND 128
+    ),
+    payload_ciphertext_base64 TEXT NOT NULL CHECK (
+        octet_length(payload_ciphertext_base64) BETWEEN 1 AND 22369624
+    ),
+    payload_associated_data_hash_base64 TEXT CHECK (
+        octet_length(payload_associated_data_hash_base64) <= 128
+    ),
+    payload_key_id TEXT NOT NULL CHECK (
+        char_length(payload_key_id) BETWEEN 1 AND 128
+        AND payload_key_id ~ '^[A-Za-z0-9._:-]+$'
+    ),
+    metadata_algorithm TEXT CHECK (
+        metadata_algorithm IN ('xchacha20poly1305-v1', 'aes-256-gcm-v1')
+    ),
+    metadata_nonce_base64 TEXT CHECK (
+        char_length(metadata_nonce_base64) BETWEEN 16 AND 128
+    ),
+    metadata_ciphertext_base64 TEXT CHECK (
+        octet_length(metadata_ciphertext_base64) BETWEEN 1 AND 22369624
+    ),
+    metadata_associated_data_hash_base64 TEXT CHECK (
+        octet_length(metadata_associated_data_hash_base64) <= 128
+    ),
+    metadata_key_id TEXT CHECK (
+        char_length(metadata_key_id) BETWEEN 1 AND 128
+        AND metadata_key_id ~ '^[A-Za-z0-9._:-]+$'
+    ),
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    acknowledged_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ,
+    CONSTRAINT memebank_transfer_retention CHECK (
+        expires_at > created_at
+        AND expires_at <= created_at + INTERVAL '30 days'
+    ),
+    CONSTRAINT memebank_transfer_metadata_complete CHECK (
+        (
+            metadata_algorithm IS NULL
+            AND metadata_nonce_base64 IS NULL
+            AND metadata_ciphertext_base64 IS NULL
+            AND metadata_associated_data_hash_base64 IS NULL
+            AND metadata_key_id IS NULL
+        )
+        OR (
+            metadata_algorithm IS NOT NULL
+            AND metadata_nonce_base64 IS NOT NULL
+            AND metadata_ciphertext_base64 IS NOT NULL
+            AND metadata_key_id IS NOT NULL
+        )
+    ),
+    CONSTRAINT memebank_transfer_terminal_timestamps CHECK (
+        (
+            state IN ('acknowledged', 'ignored', 'rejected')
+            AND acknowledged_at IS NOT NULL
+            AND cancelled_at IS NULL
+        )
+        OR (
+            state = 'cancelled'
+            AND acknowledged_at IS NULL
+            AND cancelled_at IS NOT NULL
+        )
+        OR (
+            state IN ('pending', 'expired')
+            AND acknowledged_at IS NULL
+            AND cancelled_at IS NULL
+        )
+    )
+);
+CREATE INDEX IF NOT EXISTS memebank_transfers_subject_state_created_idx
+    ON cliptown.memebank_transfers (subject_id, state, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS memebank_transfers_subject_expiry_idx
+    ON cliptown.memebank_transfers (subject_id, expires_at, id);
+
+CREATE TABLE IF NOT EXISTS cliptown.memebank_transfer_idempotency (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    subject_id UUID NOT NULL REFERENCES cliptown.accounts(user_id) ON DELETE CASCADE,
+    idempotency_key TEXT NOT NULL CHECK (
+        char_length(idempotency_key) BETWEEN 16 AND 128
+        AND idempotency_key ~ '^[A-Za-z0-9._:-]+$'
+    ),
+    operation TEXT NOT NULL CHECK (operation IN ('create', 'acknowledge')),
+    normalized_route TEXT NOT NULL CHECK (
+        char_length(normalized_route) BETWEEN 1 AND 256
+        AND normalized_route LIKE '/%'
+        AND normalized_route NOT LIKE '%?%'
+        AND normalized_route NOT LIKE '%#%'
+        AND normalized_route NOT LIKE '%//%'
+    ),
+    request_digest_base64url TEXT NOT NULL CHECK (
+        char_length(request_digest_base64url) BETWEEN 43 AND 44
+        AND request_digest_base64url ~ '^[A-Za-z0-9_-]{43}=?$'
+    ),
+    transfer_id UUID REFERENCES cliptown.memebank_transfers(id) ON DELETE CASCADE,
+    response_state TEXT CHECK (
+        response_state IN (
+            'pending', 'acknowledged', 'ignored', 'rejected', 'expired', 'cancelled'
+        )
+    ),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL CHECK (
+        expires_at > created_at
+        AND expires_at <= created_at + INTERVAL '30 days'
+    ),
+    UNIQUE (subject_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS memebank_transfer_idempotency_expiry_idx
+    ON cliptown.memebank_transfer_idempotency (expires_at);
+
+ALTER TABLE cliptown.memebank_transfers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cliptown.memebank_transfer_idempotency ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS memebank_transfers_owner_policy ON cliptown.memebank_transfers;
+CREATE POLICY memebank_transfers_owner_policy ON cliptown.memebank_transfers
+    USING (subject_id = cliptown.current_user_id())
+    WITH CHECK (subject_id = cliptown.current_user_id());
+
+DROP POLICY IF EXISTS memebank_transfer_idempotency_owner_policy
+    ON cliptown.memebank_transfer_idempotency;
+CREATE POLICY memebank_transfer_idempotency_owner_policy
+    ON cliptown.memebank_transfer_idempotency
+    USING (subject_id = cliptown.current_user_id())
+    WITH CHECK (subject_id = cliptown.current_user_id());
+
+REVOKE ALL ON cliptown.memebank_transfers FROM PUBLIC;
+REVOKE ALL ON cliptown.memebank_transfer_idempotency FROM PUBLIC;
+-- END DEN-1578 MEMEBANK TRANSFER API
