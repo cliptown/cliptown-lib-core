@@ -21,6 +21,8 @@ DEN-1578 defines the backend enforcement and PostgreSQL/RLS desired state for th
 
 The transfer queue stores ciphertext plus bounded routing and integrity metadata. Create and acknowledgement idempotency are subject, route, operation, and digest bound; cross-subject access is indistinguishable from absence; terminal records cannot be reopened. The schema enables RLS for both transfer tables and revokes public access.
 
+The enforcement tests cover valid delegated read/write/delete operations plus issuer, audience, client, session, lineage, time, scope, assurance, ciphertext shape, contract version, retention, ownership, idempotency, state-transition, cancellation, cursor, and exact cipher wire-format failures. Separate schema tests lock the ciphertext-only columns, subject RLS policies, public revocations, size/retention constraints, and absence of credential, plaintext, local-path, deep-link, and app-presence fields.
+
 No MemeBank Axum route is mounted yet. Route wiring remains fail-closed until the coordinated shared-auth delegation implementation is available and can be connected through a revocation-aware verifier. The interim service therefore cannot fall back to a raw bearer, service-wide credential, 3FA-specific proof, app-presence check, deep link, local IPC, or clipboard transport.
 
 ## Run
