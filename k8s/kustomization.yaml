@@ -3,7 +3,6 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
-  - networkpolicy.yaml
 commonLabels:
   app.kubernetes.io/name: cliptown-api
   app.kubernetes.io/part-of: cliptown
