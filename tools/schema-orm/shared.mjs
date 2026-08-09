@@ -1,4 +1,13 @@
+import { spawnSync } from 'node:child_process';
+
 import { GENERATED_HEADER, stableStringify } from './core.mjs';
+
+function formatGo(content) {
+  const result = spawnSync('gofmt', [], { input: content, encoding: 'utf8' });
+  if (result.error?.code === 'ENOENT') throw new Error('gofmt is required to generate canonical shared Go output');
+  if (result.status !== 0) throw new Error(`gofmt failed: ${result.stderr || result.error || 'unknown error'}`);
+  return result.stdout;
+}
 
 function descriptorData(model) {
   return model.entities.map((entity) => ({
@@ -60,7 +69,7 @@ function generateSharedGo(model) {
   ];
   for (const item of descriptorData(model)) lines.push(`  {Entity: ${JSON.stringify(item.entity)}, InterfaceType: ${JSON.stringify(item.interfaceType)}, Table: ${JSON.stringify(item.table)}, PrimaryKey: []string{${item.primaryKey.map((v) => JSON.stringify(v)).join(', ')}}, RequiredFields: []string{${item.requiredFields.map((v) => JSON.stringify(v)).join(', ')}}},`);
   lines.push('}', '', 'func StableEntityKey(entity string, record map[string]any) (string, error) {', '  for _, descriptor := range EntityDescriptors {', '    if descriptor.Entity != entity { continue }', '    parts := []string{entity}', '    for _, field := range descriptor.PrimaryKey {', '      value, ok := record[field]', '      if !ok || value == nil || fmt.Sprint(value) == "" { return "", fmt.Errorf("missing primary key field %s.%s", entity, field) }', '      parts = append(parts, url.QueryEscape(fmt.Sprint(value)))', '    }', '    return strings.Join(parts, ":"), nil', '  }', '  return "", fmt.Errorf("unknown entity: %s", entity)', '}', '');
-  return `${lines.join('\n')}`;
+  return formatGo(`${lines.join('\n')}\n`);
 }
 
 function generateSharedDart(model) {
@@ -82,6 +91,5 @@ function generateSharedDart(model) {
   lines.push('];', '', 'String stableEntityKey(String entity, Map<String, Object?> record) {', '  final descriptor = entityDescriptors.where((candidate) => candidate.entity == entity).firstOrNull;', "  if (descriptor == null) throw ArgumentError.value(entity, 'entity', 'unknown entity');", '  final parts = <String>[entity];', '  for (final field in descriptor.primaryKey) {', '    final value = record[field];', "    if (value == null || value.toString().isEmpty) throw ArgumentError('missing primary key field $entity.$field');", '    parts.add(Uri.encodeComponent(value.toString()));', '  }', "  return parts.join(':');", '}', '');
   return `${lines.join('\n')}`;
 }
-
 
 export { generateSharedDart, generateSharedGo, generateSharedRust, generateSharedTs };
