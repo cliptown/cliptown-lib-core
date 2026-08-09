@@ -91,7 +91,7 @@ jobs:
           git config user.name 'ClipTown Semantic Merger'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           rm -rf .bootstrap
-          git rm -- .github/workflows/bootstrap-semantic-provenance.yml
+          rm -f .github/workflows/ci.yml
           git add -A
           tree="$(git write-tree)"
           base="$(git rev-parse HEAD)"
@@ -104,8 +104,9 @@ jobs:
           git merge-base --is-ancestor "$CLIENTS_HEAD" "$merge"
           git merge-base --is-ancestor "$MONOREPO_HEAD" "$merge"
           test "$(git show "$merge:.zpkg.toml" | grep -c 'cliptown/cliptown-interfaces')" -eq 1
-          if git cat-file -e "$merge:.github/workflows/bootstrap-semantic-provenance.yml" 2>/dev/null; then
-            echo 'bootstrap workflow unexpectedly survived semantic merge' >&2
+          git cat-file -e "$merge:.github/workflows/bootstrap-semantic-provenance.yml"
+          if git cat-file -e "$merge:.github/workflows/ci.yml" 2>/dev/null; then
+            echo 'CI workflow must be installed by the workflow-authorized control plane' >&2
             exit 1
           fi
           if git ls-tree -r --name-only "$merge" | grep -q '^\.bootstrap/'; then
