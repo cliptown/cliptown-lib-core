@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { normalizeSchema, sha256, stableStringify } from './schema-orm/core.mjs';
+import { fail, normalizeSchema, sha256, stableStringify } from './schema-orm/core.mjs';
 import { generateDrift, generateGorm } from './schema-orm/go-dart.mjs';
 import { generateEnt, generateStormberry } from './schema-orm/ent-stormberry.mjs';
 import { generateDrizzle, generatePrisma, generateTypeOrm } from './schema-orm/node.mjs';
