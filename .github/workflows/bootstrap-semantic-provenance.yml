@@ -1,0 +1,121 @@
+name: bootstrap semantic provenance
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-semantic-provenance
+  cancel-in-progress: false
+
+jobs:
+  consolidate:
+    if: github.repository == 'cliptown/cliptown-lib-core'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out exact bootstrap head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+          submodules: false
+          show-progress: false
+
+      - name: Materialize the reviewed consolidated tree
+        shell: bash
+        env:
+          PAYLOAD_SHA256: d110be763ab03d18844620906ea0fef891491f36a2be2fca2045b7b58f557560
+        run: |
+          set -Eeuo pipefail
+          test "$(find .bootstrap -maxdepth 1 -type f -name 'cliptown-lib-core-payload-*.b64' | wc -l)" -eq 4
+          cat .bootstrap/cliptown-lib-core-payload-*.b64 | tr -d '\r\n'             > "$RUNNER_TEMP/cliptown-lib-core-final.b64"
+          base64 -d "$RUNNER_TEMP/cliptown-lib-core-final.b64"             > "$RUNNER_TEMP/cliptown-lib-core-final.tar.gz"
+          printf '%s  %s\n' "$PAYLOAD_SHA256"             "$RUNNER_TEMP/cliptown-lib-core-final.tar.gz" | sha256sum -c -
+          if tar -tzf "$RUNNER_TEMP/cliptown-lib-core-final.tar.gz"             | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+            echo 'unsafe payload path' >&2
+            exit 1
+          fi
+          tar -xzf "$RUNNER_TEMP/cliptown-lib-core-final.tar.gz"             --no-same-owner -C "$GITHUB_WORKSPACE"
+          rm -f "$RUNNER_TEMP/cliptown-lib-core-final.b64"             "$RUNNER_TEMP/cliptown-lib-core-final.tar.gz"
+          test -f Cargo.toml
+          test -f src/lib.rs
+          test -f .github/workflows/ci.yml
+          test -f docs/PROVENANCE.md
+          git diff --check
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.88.0 --profile minimal --component clippy,rustfmt
+
+      - name: Normalize and verify the consolidated implementation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo +1.88.0 generate-lockfile
+          cargo +1.88.0 fmt --all
+          cargo +1.88.0 fmt --all -- --check
+          cargo +1.88.0 test --locked --all-targets
+          cargo +1.88.0 clippy --locked --all-targets -- -D warnings
+          RUSTDOCFLAGS='-D warnings' cargo +1.88.0 doc --locked --no-deps
+          git diff --check
+
+      - name: Preserve exact donor histories in one semantic merge
+        shell: bash
+        env:
+          INTERFACES_HEAD: 85581536948217b0d9433a900a290eee000bc51c
+          BACKEND_HEAD: c1953e0519e952c682a4e59dc6a931aab7b29cad
+          CLIENTS_HEAD: 8ee49a596c32950efa49f17a5894a5137da633b2
+          MONOREPO_HEAD: fdf9d869fe4ab711fc69198f26f5dbd4de846acc
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -f .github/workflows/bootstrap-semantic-provenance.yml
+
+          git fetch --no-tags --force             https://github.com/cliptown/cliptown-interfaces.git             refs/heads/main:refs/remotes/donor/interfaces/main
+          git fetch --no-tags --force             https://github.com/cliptown/cliptown-rust-backend.rs.git             refs/heads/main:refs/remotes/donor/backend/main
+          git fetch --no-tags --force             https://github.com/cliptown/cliptown-clients.git             refs/heads/main:refs/remotes/donor/clients/main
+          git fetch --no-tags --force             https://github.com/cliptown/cliptown-monorepo.git             refs/heads/main:refs/remotes/donor/monorepo/main
+
+          test "$(git rev-parse refs/remotes/donor/interfaces/main)" = "$INTERFACES_HEAD"
+          test "$(git rev-parse refs/remotes/donor/backend/main)" = "$BACKEND_HEAD"
+          test "$(git rev-parse refs/remotes/donor/clients/main)" = "$CLIENTS_HEAD"
+          test "$(git rev-parse refs/remotes/donor/monorepo/main)" = "$MONOREPO_HEAD"
+
+          git config user.name 'ClipTown Semantic Merger'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -rf .bootstrap
+          git rm -- .github/workflows/bootstrap-semantic-provenance.yml
+          git add -A
+          tree="$(git write-tree)"
+          base="$(git rev-parse HEAD)"
+          merge="$(printf '%s\n'             'feat: establish cliptown-lib-core semantic consolidation'             ''             'Preserve the exact reviewed interfaces, backend, clients, and monorepo histories as merge parents while retaining only transport-neutral core policy in the resulting tree.'             | git commit-tree "$tree"                 -p "$base"                 -p "$INTERFACES_HEAD"                 -p "$BACKEND_HEAD"                 -p "$CLIENTS_HEAD"                 -p "$MONOREPO_HEAD")"
+
+          test "$(git cat-file -p "$merge" | grep -c '^parent ')" -eq 5
+          git merge-base --is-ancestor "$base" "$merge"
+          git merge-base --is-ancestor "$INTERFACES_HEAD" "$merge"
+          git merge-base --is-ancestor "$BACKEND_HEAD" "$merge"
+          git merge-base --is-ancestor "$CLIENTS_HEAD" "$merge"
+          git merge-base --is-ancestor "$MONOREPO_HEAD" "$merge"
+          test "$(git show "$merge:.zpkg.toml" | grep -c 'cliptown/cliptown-interfaces')" -eq 1
+          if git cat-file -e "$merge:.github/workflows/bootstrap-semantic-provenance.yml" 2>/dev/null; then
+            echo 'bootstrap workflow unexpectedly survived semantic merge' >&2
+            exit 1
+          fi
+          if git ls-tree -r --name-only "$merge" | grep -q '^\.bootstrap/'; then
+            echo 'bootstrap payload unexpectedly survived semantic merge' >&2
+            exit 1
+          fi
+
+          git push origin "$merge:refs/heads/main"
+          {
+            echo '## Semantic consolidation complete'
+            echo
+            echo "- Head: \`$merge\`"
+            echo '- Parents: bootstrap + exact interfaces/backend/clients/monorepo donor heads'
+          } >> "$GITHUB_STEP_SUMMARY"
