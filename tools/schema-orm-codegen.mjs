@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { normalizeSchema, sha256, stableStringify } from './schema-orm/core.mjs';
 import { generateDrift, generateGorm } from './schema-orm/go-dart.mjs';
+import { generateEnt, generateStormberry } from './schema-orm/ent-stormberry.mjs';
 import { generateDrizzle, generatePrisma, generateTypeOrm } from './schema-orm/node.mjs';
 import { generateRustSeaOrm } from './schema-orm/rust.mjs';
 import { generateSharedDart, generateSharedGo, generateSharedRust, generateSharedTs } from './schema-orm/shared.mjs';
@@ -22,7 +23,9 @@ function generateFiles(schema) {
     ['node/prisma/schema.prisma', generatePrisma(model)],
     ['node/typeorm/entities.ts', generateTypeOrm(model)],
     ['go/gorm/models.go', generateGorm(model)],
+    ['go/ent/schema/entities.go', generateEnt(model)],
     ['dart/drift/tables.dart', generateDrift(model)],
+    ['dart/stormberry/models.dart', generateStormberry(model)],
     ['shared/typescript/entity-descriptors.ts', generateSharedTs(model)],
     ['shared/rust/entity_descriptors.rs', generateSharedRust(model)],
     ['shared/go/entity_descriptors.go', generateSharedGo(model)],
@@ -30,7 +33,7 @@ function generateFiles(schema) {
   ]);
   const manifest = {
     generator: 'tools/schema-orm-codegen.mjs',
-    generatorVersion: 1,
+    generatorVersion: 2,
     schemaDialect: schema.$schema,
     schemaId: schema.$id ?? null,
     schemaSha256: sha256(canonical),

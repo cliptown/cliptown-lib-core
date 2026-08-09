@@ -14,13 +14,23 @@ HTTP concerns, storage clients, plaintext clipboard data, or key custody into
 
 ## Generated targets
 
-The repository emits PostgreSQL and SQLite DDL, SeaORM, Drizzle, Prisma,
-TypeORM, GORM, and Drift definitions. Cross-language descriptors implement the
-same stable entity-key routine from each entity's declared primary key.
+The repository emits PostgreSQL and SQLite DDL; SeaORM; Drizzle, Prisma, and
+TypeORM; GORM and Ent; and Drift and Stormberry. Cross-language descriptors
+implement the same stable entity-key routine from each entity's declared
+primary key.
 
-GORM is the canonical Go adapter because the fleet contains real composite
-keys. Drift is the Dart adapter because ClipTown clients need a type-safe,
-code-generated embedded relational layer on desktop and mobile.
+GORM is the writable Go adapter because it represents ordinary and composite
+primary keys directly. Ent is the graph/schema-first Go adapter: ordinary
+single-`id` entities are generated as `ent.Schema` types with `entsql.Skip()`,
+while composite or non-`id` keys become read-only `ent.View` types so Ent cannot
+invent a synthetic key. In both cases, generated SQL owns migrations,
+foreign-key actions, CHECK constraints, and partial indexes.
+
+Drift is the local Dart/Flutter adapter for reactive embedded stores.
+Stormberry is the typed PostgreSQL Dart adapter. Its model annotations retain
+canonical table names, SQL column names, defaults, indexes, and composite-key
+members, but `stormberry migrate` is not a production migration path; generated
+PostgreSQL SQL remains authoritative.
 
 ## Change protocol
 

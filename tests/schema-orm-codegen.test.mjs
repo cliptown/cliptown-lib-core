@@ -57,7 +57,9 @@ test('generation is deterministic and covers every requested ORM', () => {
     'node/prisma/schema.prisma',
     'node/typeorm/entities.ts',
     'go/gorm/models.go',
+    'go/ent/schema/entities.go',
     'dart/drift/tables.dart',
+    'dart/stormberry/models.dart',
   ]) assert.ok(first.files.has(path), path);
   assert.match(first.files.get('go/gorm/models.go'), /primaryKey;autoIncrement:false/);
   assert.match(first.files.get('node/drizzle/schema.ts'), /primaryKey\(\{ columns:/);
@@ -67,6 +69,17 @@ test('generation is deterministic and covers every requested ORM', () => {
   assert.match(first.files.get('node/prisma/schema.prisma'), /Partial index test_memberships_subject_idx/);
   assert.match(first.files.get('go/gorm/models.go'), /index:test_memberships_subject_idx,priority:1,where:role = 'member'/);
   assert.match(first.files.get('dart/drift/tables.dart'), /@TableIndex\.sql/);
+
+  const ent = first.files.get('go/ent/schema/entities.go');
+  assert.match(ent, /type Parent struct \{\s+ent\.Schema/);
+  assert.match(ent, /entsql\.Skip\(\)/);
+  assert.match(ent, /type Membership struct \{\s+ent\.View/);
+  assert.doesNotMatch(ent, /func \(Membership\) Indexes/);
+
+  const stormberry = first.files.get('dart/stormberry/models.dart');
+  assert.match(stormberry, /@Model\(\s+tableName: "test_memberships"/);
+  assert.match(stormberry, /condition: "role = 'member'"/);
+  assert.equal((stormberry.match(/@PrimaryKey\(\)/g) ?? []).length, 3);
 });
 
 test('rejects unsafe SQL identifiers', () => {

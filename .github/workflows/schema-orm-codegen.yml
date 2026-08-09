@@ -61,4 +61,8 @@ jobs:
         run: bash tests/check-generated-go.sh
 
       - name: Verify canonical Go formatting
-        run: test -z "$(gofmt -d generated/go/gorm/models.go generated/shared/go/entity_descriptors.go)"
+        run: >-
+          test -z "$(gofmt -d
+          generated/go/gorm/models.go
+          generated/go/ent/schema/entities.go
+          generated/shared/go/entity_descriptors.go)"

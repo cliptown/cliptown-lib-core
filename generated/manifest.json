@@ -8,7 +8,7 @@
     "SyncCursor"
   ],
   "generator": "tools/schema-orm-codegen.mjs",
-  "generatorVersion": 1,
+  "generatorVersion": 2,
   "interfaces": {
     "repository": "cliptown/cliptown-interfaces",
     "revision": "ec4f820bcc9181c2423a6963d3890ddc8ef18b97",
@@ -19,6 +19,8 @@
   },
   "outputs": {
     "dart/drift/tables.dart": "9aa13e2c348a9ba5fe1c714140b1bf62bfc209123c1945c93a380744b1d7b30f",
+    "dart/stormberry/models.dart": "5ddaf0e3e720dbff7d63c9ae448c32f2df996c120bd9017da2efb79ae42973f5",
+    "go/ent/schema/entities.go": "db06b0e97f20f1b5a3256069fbf8749a212ed82c52cf295de027303a2b9152fc",
     "go/gorm/models.go": "ac2ce4fd7daea79a7e2af5c783499bce972512c0ec246da1364e51abcdf71273",
     "node/drizzle/schema.ts": "bce7704c8203287c3b06b3a8900457c67856708486106bd6728473b005aa9aef",
     "node/prisma/schema.prisma": "cdb0eeef290be6e571ce63faa9601533dd3fa2b166aac60b0d0d817bbe24b6c3",
