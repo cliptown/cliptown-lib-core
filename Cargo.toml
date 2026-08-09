@@ -1,0 +1,17 @@
+[package]
+name = "cliptown-lib-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+license = "MIT"
+description = "Transport-neutral ClipTown domain, authorization, encrypted-object, and sync invariants"
+repository = "https://github.com/cliptown/cliptown-lib-core"
+keywords = ["clipboard", "encryption", "sync", "authorization"]
+categories = ["data-structures", "cryptography"]
+
+[dependencies]
+base64 = "0.22.1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+uuid = { version = "1.17.0", features = ["serde", "v4"] }

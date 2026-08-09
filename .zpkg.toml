@@ -1,0 +1,30 @@
+[package]
+name = "cliptown/cliptown-lib-core"
+version = "0.1.0"
+description = "Transport-neutral ClipTown core library"
+license = "MIT"
+repository = "https://github.com/cliptown/cliptown-lib-core"
+
+[install]
+dir = ".vendor/.zed"
+
+[dependencies]
+"cliptown/cliptown-interfaces" = "^0.1.0"
+
+[targets.rust]
+dir = "."
+
+[publish]
+include = [
+  "Cargo.toml",
+  "Cargo.lock",
+  "rust-toolchain.toml",
+  "src/**",
+  "README.md",
+  "LICENSE",
+  "SECURITY.md",
+  "docs/**",
+]
+
+[smoke_test]
+command = "cargo test --locked --all-targets"
