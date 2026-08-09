@@ -27,7 +27,7 @@
     "node/typeorm/entities.ts": "972137ba4331561dbd2bd26c166a01f3257ae5a2bd7e77746480a1ff4f3728b2",
     "rust/sea-orm/entities.rs": "7ee1258242587989f188b3a72cce8da9d64d733e73d539794b85f4f77f1a2ce1",
     "shared/dart/entity_descriptors.dart": "679efa5e7e7c6aabbe03d72c605b2a224301c5561728b22f2462ebe6e23674aa",
-    "shared/go/entity_descriptors.go": "f0e14924869295118b065cba65bdf6fd8b0924ebbfdec66fd462c2878e6f28ee",
+    "shared/go/entity_descriptors.go": "7c4fec78c7797e57383c90f2d1c383d9590206bd144390370450018f32ff57da",
     "shared/rust/entity_descriptors.rs": "62b5e04fab292b8682f074c26289f87764a4264f38bb45d1bd1dce1463984b09",
     "shared/typescript/entity-descriptors.ts": "24f4c5ce77cc885abd9e860113bc0cc979e2a31bc674979d1490163da87b0aa6",
     "sql/postgres.sql": "8917cff9c8840d2943183bb2988915a1a6bde92a170c1d575cf02dbb8879da76",
