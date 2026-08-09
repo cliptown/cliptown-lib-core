@@ -1,0 +1,510 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cliptown/cliptown-lib-core/blob/main/schema/persistence.schema.json",
+  "title": "ClipTown lib-core persistence schema",
+  "description": "Canonical persistence model for encrypted ClipTown metadata and generated ORM adapters.",
+  "type": "object",
+  "x-lib-core": {
+    "product": "cliptown",
+    "interfaces": {
+      "repository": "cliptown/cliptown-interfaces",
+      "revision": "ec4f820bcc9181c2423a6963d3890ddc8ef18b97",
+      "schemaPaths": [
+        "schemas/**/*.json",
+        "generated/{rust,typescript,dart}/**/*"
+      ]
+    },
+    "database": {
+      "tablePrefix": "cliptown_",
+      "authoritativeDialect": "postgresql"
+    }
+  },
+  "$defs": {
+    "Device": {
+      "type": "object",
+      "description": "A registered ciphertext-producing device. Private keys never enter this table.",
+      "x-interface": {
+        "type": "DeviceRegistration"
+      },
+      "x-db": {
+        "table": "cliptown_devices",
+        "primaryKey": [
+          "id"
+        ],
+        "indexes": [
+          {
+            "name": "cliptown_devices_owner_idx",
+            "fields": [
+              "ownerSubject",
+              "createdAt"
+            ]
+          }
+        ]
+      },
+      "required": [
+        "id",
+        "ownerSubject",
+        "label",
+        "publicKey",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "x-db": {
+            "default": "gen_random_uuid()"
+          }
+        },
+        "ownerSubject": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "publicKey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "status": {
+          "type": "string",
+          "default": "active",
+          "enum": [
+            "active",
+            "revoked"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "x-db": {
+            "default": "now()",
+            "defaultByDialect": {
+              "sqlite": "current_timestamp"
+            }
+          }
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "x-db": {
+            "default": "now()",
+            "defaultByDialect": {
+              "sqlite": "current_timestamp"
+            }
+          }
+        },
+        "revokedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "EncryptedObject": {
+      "type": "object",
+      "description": "Opaque encrypted object metadata. No plaintext or unwrapped content keys are persisted.",
+      "x-interface": {
+        "type": "EncryptedObjectManifest"
+      },
+      "x-db": {
+        "table": "cliptown_encrypted_objects",
+        "primaryKey": [
+          "id"
+        ],
+        "indexes": [
+          {
+            "name": "cliptown_encrypted_objects_owner_idx",
+            "fields": [
+              "ownerSubject",
+              "createdAt"
+            ]
+          }
+        ],
+        "checks": [
+          {
+            "name": "cliptown_encrypted_objects_size_chk",
+            "expression": "size_bytes >= 0"
+          },
+          {
+            "name": "cliptown_encrypted_objects_chunks_chk",
+            "expression": "chunk_count > 0"
+          }
+        ]
+      },
+      "required": [
+        "id",
+        "ownerSubject",
+        "storageKey",
+        "ciphertextSha256",
+        "sizeBytes",
+        "chunkCount",
+        "manifest",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "x-db": {
+            "default": "gen_random_uuid()"
+          }
+        },
+        "ownerSubject": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "storageKey": {
+          "type": "string",
+          "maxLength": 1024,
+          "x-db": {
+            "unique": true
+          }
+        },
+        "ciphertextSha256": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "chunkCount": {
+          "type": "integer",
+          "format": "int32",
+          "default": 1
+        },
+        "manifest": {
+          "type": "object",
+          "default": {}
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "x-db": {
+            "default": "now()",
+            "defaultByDialect": {
+              "sqlite": "current_timestamp"
+            }
+          }
+        },
+        "deletedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ClipRecord": {
+      "type": "object",
+      "description": "Metadata for an encrypted clipboard record. Clipboard plaintext remains outside lib-core.",
+      "x-interface": {
+        "type": "ClipEnvelope"
+      },
+      "x-db": {
+        "table": "cliptown_clip_records",
+        "primaryKey": [
+          "id"
+        ],
+        "indexes": [
+          {
+            "name": "cliptown_clip_records_owner_clock_idx",
+            "fields": [
+              "ownerSubject",
+              "logicalClock"
+            ]
+          },
+          {
+            "name": "cliptown_clip_records_object_uq",
+            "fields": [
+              "encryptedObjectId"
+            ],
+            "unique": true
+          }
+        ],
+        "checks": [
+          {
+            "name": "cliptown_clip_records_size_chk",
+            "expression": "size_bytes >= 0"
+          },
+          {
+            "name": "cliptown_clip_records_clock_chk",
+            "expression": "logical_clock >= 0"
+          }
+        ]
+      },
+      "required": [
+        "id",
+        "ownerSubject",
+        "deviceId",
+        "encryptedObjectId",
+        "mediaType",
+        "ciphertextSha256",
+        "sizeBytes",
+        "logicalClock",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "x-db": {
+            "default": "gen_random_uuid()"
+          }
+        },
+        "ownerSubject": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "deviceId": {
+          "type": "string",
+          "format": "uuid",
+          "x-db": {
+            "references": {
+              "entity": "Device",
+              "field": "id",
+              "onDelete": "cascade",
+              "onUpdate": "cascade"
+            }
+          }
+        },
+        "encryptedObjectId": {
+          "type": "string",
+          "format": "uuid",
+          "x-db": {
+            "references": {
+              "entity": "EncryptedObject",
+              "field": "id",
+              "onDelete": "restrict",
+              "onUpdate": "cascade"
+            }
+          }
+        },
+        "mediaType": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "ciphertextSha256": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "logicalClock": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "sourceApp": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "x-db": {
+            "default": "now()",
+            "defaultByDialect": {
+              "sqlite": "current_timestamp"
+            }
+          }
+        },
+        "expiresAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "deletedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ObjectGrant": {
+      "type": "object",
+      "description": "A recipient-specific wrapped content key. The unwrapped key is never stored.",
+      "x-interface": {
+        "type": "EncryptedObjectGrant"
+      },
+      "x-db": {
+        "table": "cliptown_object_grants",
+        "primaryKey": [
+          "id"
+        ],
+        "indexes": [
+          {
+            "name": "cliptown_object_grants_recipient_idx",
+            "fields": [
+              "recipientSubject",
+              "createdAt"
+            ]
+          },
+          {
+            "name": "cliptown_object_grants_object_recipient_uq",
+            "fields": [
+              "encryptedObjectId",
+              "recipientSubject"
+            ],
+            "unique": true
+          }
+        ]
+      },
+      "required": [
+        "id",
+        "encryptedObjectId",
+        "recipientSubject",
+        "wrappedKey",
+        "algorithm",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "x-db": {
+            "default": "gen_random_uuid()"
+          }
+        },
+        "encryptedObjectId": {
+          "type": "string",
+          "format": "uuid",
+          "x-db": {
+            "references": {
+              "entity": "EncryptedObject",
+              "field": "id",
+              "onDelete": "cascade",
+              "onUpdate": "cascade"
+            }
+          }
+        },
+        "recipientSubject": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "wrappedKey": {
+          "type": "string",
+          "maxLength": 16384
+        },
+        "algorithm": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "x-db": {
+            "default": "now()",
+            "defaultByDialect": {
+              "sqlite": "current_timestamp"
+            }
+          }
+        },
+        "expiresAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "revokedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SyncCursor": {
+      "type": "object",
+      "description": "Monotonic per-device synchronization position.",
+      "x-interface": {
+        "type": "SyncCursor"
+      },
+      "x-db": {
+        "table": "cliptown_sync_cursors",
+        "primaryKey": [
+          "deviceId",
+          "stream"
+        ],
+        "indexes": [
+          {
+            "name": "cliptown_sync_cursors_clock_idx",
+            "fields": [
+              "lastLogicalClock",
+              "updatedAt"
+            ]
+          }
+        ],
+        "checks": [
+          {
+            "name": "cliptown_sync_cursors_clock_chk",
+            "expression": "last_logical_clock >= 0"
+          }
+        ]
+      },
+      "required": [
+        "deviceId",
+        "stream",
+        "lastLogicalClock",
+        "updatedAt"
+      ],
+      "properties": {
+        "deviceId": {
+          "type": "string",
+          "format": "uuid",
+          "x-db": {
+            "references": {
+              "entity": "Device",
+              "field": "id",
+              "onDelete": "cascade",
+              "onUpdate": "cascade"
+            }
+          }
+        },
+        "stream": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "lastLogicalClock": {
+          "type": "integer",
+          "format": "int64",
+          "default": 0
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "x-db": {
+            "default": "now()",
+            "defaultByDialect": {
+              "sqlite": "current_timestamp"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

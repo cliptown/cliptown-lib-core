@@ -1,0 +1,13 @@
+{
+  "name": "cliptown-lib-core-schema-tooling",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "generate": "node tools/schema-orm-codegen.mjs",
+    "generate:check": "node tools/schema-orm-codegen.mjs --check",
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "entityCount": 5,
+  "entityNames": [
+    "Device",
+    "EncryptedObject",
+    "ClipRecord",
+    "ObjectGrant",
+    "SyncCursor"
+  ],
+  "generator": "tools/schema-orm-codegen.mjs",
+  "generatorVersion": 1,
+  "interfaces": {
+    "repository": "cliptown/cliptown-interfaces",
+    "revision": "ec4f820bcc9181c2423a6963d3890ddc8ef18b97",
+    "schemaPaths": [
+      "schemas/**/*.json",
+      "generated/{rust,typescript,dart}/**/*"
+    ]
+  },
+  "outputs": {
+    "dart/drift/tables.dart": "9aa13e2c348a9ba5fe1c714140b1bf62bfc209123c1945c93a380744b1d7b30f",
+    "go/gorm/models.go": "ac2ce4fd7daea79a7e2af5c783499bce972512c0ec246da1364e51abcdf71273",
+    "node/drizzle/schema.ts": "bce7704c8203287c3b06b3a8900457c67856708486106bd6728473b005aa9aef",
+    "node/prisma/schema.prisma": "cdb0eeef290be6e571ce63faa9601533dd3fa2b166aac60b0d0d817bbe24b6c3",
+    "node/typeorm/entities.ts": "972137ba4331561dbd2bd26c166a01f3257ae5a2bd7e77746480a1ff4f3728b2",
+    "rust/sea-orm/entities.rs": "7ee1258242587989f188b3a72cce8da9d64d733e73d539794b85f4f77f1a2ce1",
+    "shared/dart/entity_descriptors.dart": "679efa5e7e7c6aabbe03d72c605b2a224301c5561728b22f2462ebe6e23674aa",
+    "shared/go/entity_descriptors.go": "f0e14924869295118b065cba65bdf6fd8b0924ebbfdec66fd462c2878e6f28ee",
+    "shared/rust/entity_descriptors.rs": "62b5e04fab292b8682f074c26289f87764a4264f38bb45d1bd1dce1463984b09",
+    "shared/typescript/entity-descriptors.ts": "24f4c5ce77cc885abd9e860113bc0cc979e2a31bc674979d1490163da87b0aa6",
+    "sql/postgres.sql": "8917cff9c8840d2943183bb2988915a1a6bde92a170c1d575cf02dbb8879da76",
+    "sql/sqlite.sql": "d1b594be5032c005f7ee113e87b50d89bcb4ebdab07d7590bde5ed8b12a6476a"
+  },
+  "product": "cliptown",
+  "schemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "schemaId": "https://github.com/cliptown/cliptown-lib-core/blob/main/schema/persistence.schema.json",
+  "schemaSha256": "4373c26c2b73c51a55083fb03465542f9bdfd54f1401d2116d99197cb08d0600"
+}

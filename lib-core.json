@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "canonicalRepository": "cliptown/cliptown-lib-core",
+  "interfaces": ["cliptown/cliptown-interfaces"],
+  "clients": ["cliptown/cliptown-clients"],
+  "donors": ["cliptown/cliptown-lib"],
+  "schemaStatus": "implemented",
+  "schemaDraft": "2020-12",
+  "migrationAuthority": "application adapters",
+  "noForcePush": true
+}

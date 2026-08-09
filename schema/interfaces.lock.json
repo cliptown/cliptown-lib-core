@@ -1,0 +1,8 @@
+{
+  "repository": "cliptown/cliptown-interfaces",
+  "revision": "ec4f820bcc9181c2423a6963d3890ddc8ef18b97",
+  "schemaPaths": [
+    "schemas/**/*.json",
+    "generated/{rust,typescript,dart}/**/*"
+  ]
+}
