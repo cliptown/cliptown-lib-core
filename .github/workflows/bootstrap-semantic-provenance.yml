@@ -47,6 +47,7 @@ jobs:
           test -f src/lib.rs
           test -f .github/workflows/ci.yml
           test -f docs/PROVENANCE.md
+          python3 -c "from pathlib import Path; p=Path('docs/PROVENANCE.md'); t=p.read_text(); t=t.replace('85581536948217b0d9433a900a290eee000bc51c', 'ec4f820bcc9181c2423a6963d3890ddc8ef18b97').replace('generated-contract boundary and package topology', 'generated-contract boundary, Git-consumable Rust workspace, and package topology'); p.write_text(t)"
           git diff --check
 
       - name: Install pinned Rust toolchain
@@ -68,7 +69,7 @@ jobs:
       - name: Preserve exact donor histories in one semantic merge
         shell: bash
         env:
-          INTERFACES_HEAD: 85581536948217b0d9433a900a290eee000bc51c
+          INTERFACES_HEAD: ec4f820bcc9181c2423a6963d3890ddc8ef18b97
           BACKEND_HEAD: c1953e0519e952c682a4e59dc6a931aab7b29cad
           CLIENTS_HEAD: 8ee49a596c32950efa49f17a5894a5137da633b2
           MONOREPO_HEAD: fdf9d869fe4ab711fc69198f26f5dbd4de846acc
