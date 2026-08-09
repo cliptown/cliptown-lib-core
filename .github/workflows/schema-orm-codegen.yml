@@ -66,3 +66,17 @@ jobs:
           generated/go/gorm/models.go
           generated/go/ent/schema/entities.go
           generated/shared/go/entity_descriptors.go)"
+
+      - name: Archive committed repository tree for recovery validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar.gz --output="$RUNNER_TEMP/source-snapshot.tar.gz" HEAD
+
+      - name: Upload recovery source snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: source-${{ github.sha }}
+          path: ${{ runner.temp }}/source-snapshot.tar.gz
+          retention-days: 1
+          if-no-files-found: error
