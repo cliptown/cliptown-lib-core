@@ -12,6 +12,36 @@ import { generateRustSeaOrm } from './schema-orm/rust.mjs';
 import { generateSharedDart, generateSharedGo, generateSharedRust, generateSharedTs } from './schema-orm/shared.mjs';
 import { generateSql } from './schema-orm/sql.mjs';
 
+const ENTRY_PATH = fileURLToPath(import.meta.url);
+const REPO_ROOT = resolve(dirname(ENTRY_PATH), '..');
+const GENERATED_ROOT = resolve(REPO_ROOT, 'generated');
+const DEFAULT_SCHEMA = resolve(REPO_ROOT, 'schema/persistence.schema.json');
+const GENERATOR_FILES = [
+  'tools/schema-orm-codegen.mjs',
+  'tools/schema-orm/core.mjs',
+  'tools/schema-orm/ent-stormberry.mjs',
+  'tools/schema-orm/go-dart.mjs',
+  'tools/schema-orm/node.mjs',
+  'tools/schema-orm/rust.mjs',
+  'tools/schema-orm/shared.mjs',
+  'tools/schema-orm/sql.mjs',
+];
+
+function generatorSha256() {
+  const framed = GENERATOR_FILES
+    .map((path) => `${path}\0${readFileSync(resolve(REPO_ROOT, path), 'utf8')}`)
+    .join('\0');
+  return sha256(framed);
+}
+
+function assertOutputRoot(value) {
+  const outputRoot = resolve(value);
+  if (outputRoot !== GENERATED_ROOT) {
+    fail(`refusing to delete or generate outside ${GENERATED_ROOT}`);
+  }
+  return outputRoot;
+}
+
 function generateFiles(schema) {
   const model = normalizeSchema(schema);
   const canonical = stableStringify(schema);
@@ -33,7 +63,9 @@ function generateFiles(schema) {
   ]);
   const manifest = {
     generator: 'tools/schema-orm-codegen.mjs',
-    generatorVersion: 2,
+    generatorVersion: 3,
+    generatorFiles: GENERATOR_FILES,
+    generatorSha256: generatorSha256(),
     schemaDialect: schema.$schema,
     schemaId: schema.$id ?? null,
     schemaSha256: sha256(canonical),
@@ -87,7 +119,7 @@ function checkGenerated(files, outputRoot) {
 }
 
 function parseArgs(argv) {
-  const args = { schema: 'schema/persistence.schema.json', out: 'generated', check: false };
+  const args = { schema: DEFAULT_SCHEMA, out: GENERATED_ROOT, check: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--check') args.check = true;
@@ -106,7 +138,7 @@ function main() {
     return;
   }
   const schemaPath = resolve(args.schema);
-  const outputRoot = resolve(args.out);
+  const outputRoot = assertOutputRoot(args.out);
   const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
   const { files, manifest } = generateFiles(schema);
   if (args.check) checkGenerated(files, outputRoot);
@@ -114,7 +146,7 @@ function main() {
   console.log(`${args.check ? 'verified' : 'generated'} ${manifest.entityCount} entities for ${manifest.product}`);
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isMain = process.argv[1] && resolve(process.argv[1]) === ENTRY_PATH;
 if (isMain) {
   try {
     main();
@@ -125,7 +157,9 @@ if (isMain) {
 }
 
 export {
+  assertOutputRoot,
   generateFiles,
+  generatorSha256,
   normalizeSchema,
   stableStringify,
 };

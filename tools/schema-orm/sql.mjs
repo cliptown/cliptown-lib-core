@@ -68,7 +68,7 @@ function sqlColumn(field, dialect, entityMap) {
 function generateSql(model, dialect) {
   const lines = [`-- ${GENERATED_HEADER}`, `-- Product: ${model.root.product}`, `-- Dialect: ${dialect}`, ''];
   for (const entity of topologicalEntities(model)) {
-    if (entity.description) lines.push(`-- ${entity.description.replaceAll('\n', ' ')}`);
+    if (entity.description) lines.push(`-- ${entity.description.replace(/[\r\n\u2028\u2029]+/gu, ' ')}`);
     lines.push(`create table if not exists ${entity.table} (`);
     const clauses = entity.fields.map((field) => sqlColumn(field, dialect, model.entityMap));
     clauses.push(`  primary key (${entity.primaryKey.map((key) => entity.fieldMap.get(key).column).join(', ')})`);

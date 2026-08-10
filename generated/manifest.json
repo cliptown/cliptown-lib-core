@@ -8,7 +8,18 @@
     "SyncCursor"
   ],
   "generator": "tools/schema-orm-codegen.mjs",
-  "generatorVersion": 2,
+  "generatorFiles": [
+    "tools/schema-orm-codegen.mjs",
+    "tools/schema-orm/core.mjs",
+    "tools/schema-orm/ent-stormberry.mjs",
+    "tools/schema-orm/go-dart.mjs",
+    "tools/schema-orm/node.mjs",
+    "tools/schema-orm/rust.mjs",
+    "tools/schema-orm/shared.mjs",
+    "tools/schema-orm/sql.mjs"
+  ],
+  "generatorSha256": "1e25c452c280b127737fee2adb55ff6b11d2cb8f22d2311c58b96515072d240c",
+  "generatorVersion": 3,
   "interfaces": {
     "repository": "cliptown/cliptown-interfaces",
     "revision": "ec4f820bcc9181c2423a6963d3890ddc8ef18b97",

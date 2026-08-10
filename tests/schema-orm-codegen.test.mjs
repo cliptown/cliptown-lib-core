@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { generateFiles, normalizeSchema } from '../tools/schema-orm-codegen.mjs';
+import { assertOutputRoot, generateFiles, generatorSha256, normalizeSchema } from '../tools/schema-orm-codegen.mjs';
 
 const schema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -49,6 +49,10 @@ test('generation is deterministic and covers every requested ORM', () => {
   const first = generateFiles(schema);
   const second = generateFiles(JSON.parse(JSON.stringify(schema)));
   assert.deepEqual([...first.files], [...second.files]);
+  assert.equal(first.manifest.generatorVersion, 3);
+  assert.equal(first.manifest.generatorSha256, generatorSha256());
+  assert.match(first.manifest.generatorSha256, /^[0-9a-f]{64}$/);
+  assert.ok(first.manifest.generatorFiles.includes('tools/schema-orm/sql.mjs'));
   for (const path of [
     'sql/postgres.sql',
     'sql/sqlite.sql',
@@ -86,4 +90,47 @@ test('rejects unsafe SQL identifiers', () => {
   const bad = structuredClone(schema);
   bad.$defs.Parent['x-db'].table = 'test_parents; drop table users';
   assert.throws(() => normalizeSchema(bad), /safe snake_case identifier/);
+});
+
+test('refuses destructive generation outside the repository generated tree', () => {
+  assert.throws(() => assertOutputRoot('/tmp/not-cliptown-generated'), /refusing to delete or generate outside/);
+});
+
+test('rejects SQL fragment escape in defaults, checks, predicates, and custom types', () => {
+  const badDefault = structuredClone(schema);
+  badDefault.$defs.Parent.properties.id['x-db'].default = 'gen_random_uuid()); drop table users; --';
+  assert.throws(() => normalizeSchema(badDefault), /statement terminator or SQL comment/);
+
+  const badCheck = structuredClone(schema);
+  badCheck.$defs.Parent['x-db'].checks = [{
+    name: 'test_parents_escape_chk',
+    expression: 'true), injected text, constraint x check (true',
+  }];
+  assert.throws(() => normalizeSchema(badCheck), /closes a parenthesis outside its expression/);
+
+  const badPredicate = structuredClone(schema);
+  badPredicate.$defs.Membership['x-db'].indexes[0].where = "role = 'member'; drop table users";
+  assert.throws(() => normalizeSchema(badPredicate), /statement terminator or SQL comment/);
+
+  const badType = structuredClone(schema);
+  badType.$defs.Parent.properties.name['x-db'] = { postgresType: 'text not null' };
+  assert.throws(() => normalizeSchema(badType), /safe SQL type fragment/);
+});
+
+test('rejects duplicate generated database names and malformed schema metadata', () => {
+  const duplicateColumn = structuredClone(schema);
+  duplicateColumn.$defs.Parent.properties.name['x-db'] = { column: 'id' };
+  assert.throws(() => normalizeSchema(duplicateColumn), /duplicate persistence column names/);
+
+  const duplicatePrimaryKey = structuredClone(schema);
+  duplicatePrimaryKey.$defs.Parent['x-db'].primaryKey = ['id', 'id'];
+  assert.throws(() => normalizeSchema(duplicatePrimaryKey), /primary key contains duplicate fields/);
+
+  const unknownRequired = structuredClone(schema);
+  unknownRequired.$defs.Parent.required.push('missingField');
+  assert.throws(() => normalizeSchema(unknownRequired), /required references unknown field/);
+
+  const invalidLength = structuredClone(schema);
+  invalidLength.$defs.Parent.properties.name.maxLength = -1;
+  assert.throws(() => normalizeSchema(invalidLength), /positive safe integer/);
 });
