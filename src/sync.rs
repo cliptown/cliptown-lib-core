@@ -96,59 +96,116 @@ pub fn validate_sync_batch(
     let latest_allowed_timestamp = now_unix_millis
         .checked_add(policy.max_future_skew_millis)
         .ok_or(CoreError::InvalidClock)?;
-    let mut mutation_ids = HashSet::with_capacity(batch.mutations.len());
-    let mut record_clocks = HashSet::with_capacity(batch.mutations.len());
-    let mut order = Vec::with_capacity(batch.mutations.len());
-    let mut highest_logical_clock = 0_u64;
+    let capacity = batch.mutations.len();
+    let (_, _, order, highest_logical_clock) = batch.mutations.iter().try_fold(
+        (
+            HashSet::with_capacity(capacity),
+            HashSet::with_capacity(capacity),
+            Vec::with_capacity(capacity),
+            0_u64,
+        ),
+        |fold, mutation| incorporate_mutation(fold, mutation, batch, latest_allowed_timestamp),
+    )?;
 
-    for mutation in &batch.mutations {
-        if mutation.mutation_id.is_nil() || mutation.clip_id.is_nil() {
-            return Err(CoreError::InvalidMutation);
-        }
-        validate_portable_identifier(&mutation.owner_subject)
-            .map_err(|_| CoreError::InvalidMutation)?;
-        validate_portable_identifier(&mutation.source_device_id)
-            .map_err(|_| CoreError::InvalidMutation)?;
-        if mutation.owner_subject != batch.owner_subject
-            || mutation.source_device_id != batch.source_device_id
-        {
-            return Err(CoreError::OwnershipMismatch);
-        }
-        if mutation.logical_clock > i64::MAX as u64 {
-            return Err(CoreError::LogicalClockOutOfRange);
-        }
-        if mutation.created_at_unix_millis < 0
-            || mutation.created_at_unix_millis > latest_allowed_timestamp
-        {
-            return Err(CoreError::FutureMutation);
-        }
-        validate_sha256_base64(&mutation.payload_sha256_base64)
-            .map_err(|_| CoreError::InvalidMutation)?;
-        if !mutation_ids.insert(mutation.mutation_id) {
-            return Err(CoreError::DuplicateMutation);
-        }
-        if !record_clocks.insert((
-            mutation.clip_id,
-            mutation.source_device_id.as_str(),
-            mutation.logical_clock,
-        )) {
-            return Err(CoreError::DuplicateRecordClock);
-        }
-
-        highest_logical_clock = highest_logical_clock.max(mutation.logical_clock);
-        order.push(MutationOrderKey {
-            logical_clock: mutation.logical_clock,
-            source_device_id: mutation.source_device_id.clone(),
-            mutation_id: mutation.mutation_id,
-        });
-    }
-
-    order.sort_unstable();
     Ok(ValidatedSyncBatch {
         mutation_count: batch.mutations.len(),
         highest_logical_clock,
-        canonical_mutation_ids: order.into_iter().map(|key| key.mutation_id).collect(),
+        canonical_mutation_ids: sorted_mutation_ids(order),
     })
+}
+
+type MutationFold<'a> = (
+    HashSet<Uuid>,
+    HashSet<(Uuid, &'a str, u64)>,
+    Vec<MutationOrderKey>,
+    u64,
+);
+
+fn incorporate_mutation<'a>(
+    (mutation_ids, record_clocks, order, highest): MutationFold<'a>,
+    mutation: &'a SyncMutation,
+    batch: &SyncBatch,
+    latest_allowed_timestamp: i64,
+) -> Result<MutationFold<'a>, CoreError> {
+    let key = validated_order_key(mutation, batch, latest_allowed_timestamp)?;
+    Ok((
+        insert_unique(
+            mutation_ids,
+            mutation.mutation_id,
+            CoreError::DuplicateMutation,
+        )?,
+        insert_unique(
+            record_clocks,
+            (
+                mutation.clip_id,
+                mutation.source_device_id.as_str(),
+                mutation.logical_clock,
+            ),
+            CoreError::DuplicateRecordClock,
+        )?,
+        append_key(order, key),
+        highest.max(mutation.logical_clock),
+    ))
+}
+
+fn validated_order_key(
+    mutation: &SyncMutation,
+    batch: &SyncBatch,
+    latest_allowed_timestamp: i64,
+) -> Result<MutationOrderKey, CoreError> {
+    match mutation.mutation_id.is_nil() || mutation.clip_id.is_nil() {
+        true => return Err(CoreError::InvalidMutation),
+        false => {}
+    }
+    validate_portable_identifier(&mutation.owner_subject)
+        .map_err(|_| CoreError::InvalidMutation)?;
+    validate_portable_identifier(&mutation.source_device_id)
+        .map_err(|_| CoreError::InvalidMutation)?;
+    match (
+        mutation.owner_subject == batch.owner_subject,
+        mutation.source_device_id == batch.source_device_id,
+    ) {
+        (true, true) => {}
+        _ => return Err(CoreError::OwnershipMismatch),
+    }
+    match mutation.logical_clock > i64::MAX as u64 {
+        true => return Err(CoreError::LogicalClockOutOfRange),
+        false => {}
+    }
+    match mutation.created_at_unix_millis < 0
+        || mutation.created_at_unix_millis > latest_allowed_timestamp
+    {
+        true => return Err(CoreError::FutureMutation),
+        false => {}
+    }
+    validate_sha256_base64(&mutation.payload_sha256_base64)
+        .map_err(|_| CoreError::InvalidMutation)?;
+    Ok(MutationOrderKey {
+        logical_clock: mutation.logical_clock,
+        source_device_id: mutation.source_device_id.clone(),
+        mutation_id: mutation.mutation_id,
+    })
+}
+
+fn insert_unique<T: Eq + std::hash::Hash>(
+    mut set: HashSet<T>,
+    value: T,
+    duplicate: CoreError,
+) -> Result<HashSet<T>, CoreError> {
+    match set.insert(value) {
+        true => Ok(set),
+        false => Err(duplicate),
+    }
+}
+
+fn append_key(mut order: Vec<MutationOrderKey>, key: MutationOrderKey) -> Vec<MutationOrderKey> {
+    order.push(key);
+    order
+}
+
+fn sorted_mutation_ids(mut order: Vec<MutationOrderKey>) -> Vec<Uuid> {
+    order.sort_unstable();
+    order.into_iter().map(|key| key.mutation_id).collect()
 }
 
 #[cfg(test)]
