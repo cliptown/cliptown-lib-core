@@ -87,54 +87,24 @@ impl EncryptedObjectManifest {
             return Err(CoreError::SizeLimitExceeded);
         }
 
-        let mut summed_ciphertext_length = 0_u64;
-        for (position, chunk) in self.chunks.iter().enumerate() {
-            if chunk.chunk_index as usize != position || chunk.ciphertext_length == 0 {
-                return Err(CoreError::InvalidManifest);
-            }
-            validate_sha256_base64(&chunk.ciphertext_sha256_base64)
-                .map_err(|_| CoreError::InvalidManifest)?;
-            let nonce = decode_base64_bounded(&chunk.nonce_base64, 64)
-                .map_err(|_| CoreError::InvalidManifest)?;
-            if !(12..=24).contains(&nonce.len()) {
-                return Err(CoreError::InvalidManifest);
-            }
-            validate_storage_key(
-                &chunk.randomized_storage_key,
-                MAX_RANDOMIZED_STORAGE_KEY_LEN,
-            )?;
-            summed_ciphertext_length = summed_ciphertext_length
-                .checked_add(chunk.ciphertext_length)
-                .ok_or(CoreError::SizeLimitExceeded)?;
-        }
-        if summed_ciphertext_length != self.ciphertext_length {
-            return Err(CoreError::InvalidManifest);
+        let summed_ciphertext_length =
+            self.chunks
+                .iter()
+                .enumerate()
+                .try_fold(0_u64, |sum, (position, chunk)| {
+                    validate_chunk(position, chunk)?;
+                    sum.checked_add(chunk.ciphertext_length)
+                        .ok_or(CoreError::SizeLimitExceeded)
+                })?;
+        match summed_ciphertext_length == self.ciphertext_length {
+            true => {}
+            false => return Err(CoreError::InvalidManifest),
         }
 
-        let mut recipients = HashSet::with_capacity(self.wrapped_keys.len());
-        for wrapped_key in &self.wrapped_keys {
-            validate_portable_identifier(&wrapped_key.recipient_device_id)
-                .map_err(|_| CoreError::InvalidWrappedKey)?;
-            validate_portable_identifier(&wrapped_key.key_id)
-                .map_err(|_| CoreError::InvalidWrappedKey)?;
-            validate_portable_identifier(&wrapped_key.algorithm)
-                .map_err(|_| CoreError::InvalidWrappedKey)?;
-            if !recipients.insert(wrapped_key.recipient_device_id.as_str()) {
-                return Err(CoreError::InvalidWrappedKey);
-            }
-            let nonce = decode_base64_bounded(&wrapped_key.nonce_base64, 64)
-                .map_err(|_| CoreError::InvalidWrappedKey)?;
-            if !(12..=24).contains(&nonce.len()) {
-                return Err(CoreError::InvalidWrappedKey);
-            }
-            let wrapped_key_bytes = decode_base64_bounded(&wrapped_key.wrapped_key_base64, 4_096)
-                .map_err(|_| CoreError::InvalidWrappedKey)?;
-            if wrapped_key_bytes.len() < 32 {
-                return Err(CoreError::InvalidWrappedKey);
-            }
-            validate_sha256_base64(&wrapped_key.associated_data_hash_base64)
-                .map_err(|_| CoreError::InvalidWrappedKey)?;
-        }
+        self.wrapped_keys.iter().try_fold(
+            HashSet::with_capacity(self.wrapped_keys.len()),
+            incorporate_wrapped_key,
+        )?;
 
         Ok(())
     }
@@ -159,16 +129,68 @@ impl Default for ObjectGrantPolicy {
 
 impl ObjectGrantPolicy {
     pub fn validate(self) -> Result<(), CoreError> {
-        if !(60..=3_600).contains(&self.ttl_seconds)
-            || self.max_object_bytes == 0
-            || self.max_object_bytes > ABSOLUTE_MAX_OBJECT_BYTES
-            || self.max_chunks == 0
-            || self.max_chunks > MAX_CHUNKS_PER_OBJECT as u32
-        {
-            return Err(CoreError::GrantPolicyOutOfBounds);
+        match (
+            (60..=3_600).contains(&self.ttl_seconds),
+            self.max_object_bytes > 0 && self.max_object_bytes <= ABSOLUTE_MAX_OBJECT_BYTES,
+            self.max_chunks > 0 && self.max_chunks <= MAX_CHUNKS_PER_OBJECT as u32,
+        ) {
+            (true, true, true) => Ok(()),
+            _ => Err(CoreError::GrantPolicyOutOfBounds),
         }
-        Ok(())
     }
+}
+
+fn validate_chunk(position: usize, chunk: &EncryptedObjectChunk) -> Result<(), CoreError> {
+    match chunk.chunk_index as usize == position && chunk.ciphertext_length != 0 {
+        true => {}
+        false => return Err(CoreError::InvalidManifest),
+    }
+    validate_sha256_base64(&chunk.ciphertext_sha256_base64)
+        .map_err(|_| CoreError::InvalidManifest)?;
+    let nonce =
+        decode_base64_bounded(&chunk.nonce_base64, 64).map_err(|_| CoreError::InvalidManifest)?;
+    match (12..=24).contains(&nonce.len()) {
+        true => {}
+        false => return Err(CoreError::InvalidManifest),
+    }
+    validate_storage_key(
+        &chunk.randomized_storage_key,
+        MAX_RANDOMIZED_STORAGE_KEY_LEN,
+    )
+}
+
+fn incorporate_wrapped_key<'a>(
+    mut recipients: HashSet<&'a str>,
+    wrapped_key: &'a WrappedContentKey,
+) -> Result<HashSet<&'a str>, CoreError> {
+    validate_portable_identifier(&wrapped_key.recipient_device_id)
+        .map_err(|_| CoreError::InvalidWrappedKey)?;
+    validate_portable_identifier(&wrapped_key.key_id).map_err(|_| CoreError::InvalidWrappedKey)?;
+    validate_portable_identifier(&wrapped_key.algorithm)
+        .map_err(|_| CoreError::InvalidWrappedKey)?;
+    match recipients.insert(wrapped_key.recipient_device_id.as_str()) {
+        true => {}
+        false => return Err(CoreError::InvalidWrappedKey),
+    }
+    validate_wrapped_key_material(wrapped_key)?;
+    Ok(recipients)
+}
+
+fn validate_wrapped_key_material(wrapped_key: &WrappedContentKey) -> Result<(), CoreError> {
+    let nonce = decode_base64_bounded(&wrapped_key.nonce_base64, 64)
+        .map_err(|_| CoreError::InvalidWrappedKey)?;
+    match (12..=24).contains(&nonce.len()) {
+        true => {}
+        false => return Err(CoreError::InvalidWrappedKey),
+    }
+    let wrapped_key_bytes = decode_base64_bounded(&wrapped_key.wrapped_key_base64, 4_096)
+        .map_err(|_| CoreError::InvalidWrappedKey)?;
+    match wrapped_key_bytes.len() < 32 {
+        true => return Err(CoreError::InvalidWrappedKey),
+        false => {}
+    }
+    validate_sha256_base64(&wrapped_key.associated_data_hash_base64)
+        .map_err(|_| CoreError::InvalidWrappedKey)
 }
 
 #[cfg(test)]
