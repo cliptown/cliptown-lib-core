@@ -8,6 +8,9 @@
   "scripts": {
     "generate": "node tools/schema-orm-codegen.mjs",
     "generate:check": "node tools/schema-orm-codegen.mjs --check",
-    "test": "node --test"
+    "test": "node --test",
+    "embeddings:generate": "node scripts/embeddings/generate.mjs",
+    "embeddings:check": "node scripts/embeddings/generate.mjs --check",
+    "embeddings:test": "node --test tests/embeddings-contract.test.mjs"
   }
 }
