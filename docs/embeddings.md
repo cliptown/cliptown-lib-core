@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit by hand.
      Regenerate: node scripts/embeddings/generate.mjs
-     Contract: ores-embedding-contract 2026.08.29 (sha256 39b8e1599d227a97f2362fdb6d3495dd38853b3345d7b05e90b64088884f9250) -->
+     Contract: ores-embedding-contract 2026.08.29 (sha256 98976465928699fb3c6c20728e4ad9f42a9d4ba0a626332f9184317c77c1e844) -->
 
 # Embeddings in cliptown
 
@@ -127,6 +127,19 @@ Two operator notes: vector indexes are behind
 non-empty table blocks writes during backfill. The `CREATE VECTOR INDEX`
 statement is therefore left commented out in the schema file and applied
 deliberately.
+
+## Prerequisites
+
+| component | minimum | why |
+| --- | --- | --- |
+| pgvector | >=0.7.0 | `halfvec`, `binary_quantize()`, `subvector()`, `l2_norm()` and the `bit_hamming_ops` / `halfvec_cosine_ops` operator classes all landed in 0.7.0. On 0.6.x this schema fails to create - the types simply are not there. |
+| PostgreSQL | >=14 | STORED generated columns, `gen_random_uuid()`. |
+| pgcrypto | migration only | `digest()` when backfilling `content_sha256`. |
+| CockroachDB | >=25.2 | `VECTOR` and the C-SPANN index, plus `feature.vector_index.enabled`. |
+
+```sql
+select extversion from pg_extension where extname = 'vector';  -- expect >= 0.7.0
+```
 
 ## Regenerating
 

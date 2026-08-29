@@ -101,7 +101,13 @@ const modelSeed = models
   })
   .join(',\n');
 
-const postgres = `${banner(`Postgres declarative schema for ${T} (embeddings + hybrid search).`)}
+let postgres = `${banner(`Postgres declarative schema for ${T} (embeddings + hybrid search).`)}
+-- Requires pgvector ${C.requires.pgvector} and PostgreSQL ${C.requires.postgres}. On pgvector 0.6.x this
+-- file does not merely run slower, it fails outright: halfvec, binary_quantize(),
+-- subvector(), l2_norm() and the bit_hamming_ops / halfvec_cosine_ops operator
+-- classes were all introduced in 0.7.0.
+--   select extversion from pg_extension where extname = 'vector';
+
 begin;
 
 create schema if not exists ${ns};
@@ -225,6 +231,7 @@ create or replace function ${ns}.emb_is_unit(v extensions.vector, tol double pre
     select v is not null and abs(extensions.l2_norm(v) - 1) <= tol
   $$;
 
+--@@SCHEMA-SPLIT@@
 -- ---------------------------------------------------------------------
 -- ${T}
 -- ${M.purpose}
@@ -367,6 +374,21 @@ create trigger ${p}_emb_touch_updated_at
 
 commit;
 `;
+
+/* The declarative schema in two halves.
+ *
+ * The widening migration has to CALL emb_pad() and JOIN embedding_models while
+ * it rewrites existing rows, so those definitions must land before the data
+ * steps, and the table + indexes after them. Splitting the one source here is
+ * what keeps the migration and the declarative file from drifting apart: both
+ * are assembled from the same text. */
+const SPLIT = '--@@SCHEMA-SPLIT@@';
+const pgBody = postgres
+  .slice(postgres.indexOf('begin;') + 'begin;'.length)
+  .replace(/\ncommit;\n?$/, '');
+const [pgPartA, pgPartB] = pgBody.split(SPLIT);
+if (pgPartB === undefined) throw new Error('schema split sentinel missing');
+postgres = postgres.replace(SPLIT + '\n', '');
 
 /* ------------------------------------------------------------------ */
 /* CockroachDB variant                                                 */
@@ -547,8 +569,9 @@ update ${T}
    set content_sha256 = encode(digest(coalesce(search_text, ''), 'sha256'), 'hex')
  where content_sha256 is null;
 
--- 5. Swap. Old search_document and old embedding go together; both are
---    regenerated from the new columns.
+-- 5. Swap. The old search_document is generated FROM the old search_text and the
+--    old embedding is the narrow column; both go, and both come back below in
+--    their new form.
 alter table ${T} drop column if exists search_document;
 alter table ${T} drop column if exists embedding;
 alter table ${T} rename column embedding_v2 to embedding;
@@ -560,6 +583,79 @@ alter table ${T}
   alter column provider       set not null,
   alter column native_dims    set not null,
   alter column content_sha256 set not null;
+
+-- 6. The derived columns. \`create table if not exists\` further down is a no-op
+--    against a table that already exists, so an existing deployment gets these
+--    here or not at all - this is the step a naive widening forgets.
+alter table ${T}
+  add column if not exists embedding_bits bit(${W}) generated always as
+    (extensions.binary_quantize(embedding)::bit(${W})) stored,
+  add column if not exists embedding_prefix extensions.halfvec(${PREFIX_DIMS}) generated always as
+    (extensions.subvector(embedding, 1, ${PREFIX_DIMS})::extensions.halfvec(${PREFIX_DIMS})) stored,
+  add column if not exists search_document tsvector generated always as (
+      setweight(to_tsvector('simple', coalesce(title_text,   '')), 'A')
+   || setweight(to_tsvector('simple', coalesce(summary_text, '')), 'B')
+   || setweight(to_tsvector('simple', coalesce(body_text,    '')), 'D')
+  ) stored;
+
+-- 7. Constraints that the old table either lacks or states differently.
+--    The old CHECK on entity_kind and the old UNIQUE are dropped by lookup
+--    rather than by name: both were auto-named by Postgres, and an auto-name is
+--    truncated at 63 bytes, so hard-coding it is how this breaks on one
+--    deployment and not another.
+do $emb_constraints$
+declare c record;
+begin
+  for c in
+    select con.conname
+      from pg_constraint con
+      join pg_class rel on rel.oid = con.conrelid
+      join pg_namespace nsp on nsp.oid = rel.relnamespace
+     where nsp.nspname = '${ns}' and rel.relname = '${tbl}'
+       and con.contype = 'c'
+       and pg_get_constraintdef(con.oid) ilike '%entity_kind%'
+       and con.conname <> '${p}_emb_zero_padded'
+  loop
+    execute format('alter table ${T} drop constraint %I', c.conname);
+  end loop;
+
+  for c in
+    select con.conname
+      from pg_constraint con
+      join pg_class rel on rel.oid = con.conrelid
+      join pg_namespace nsp on nsp.oid = rel.relnamespace
+     where nsp.nspname = '${ns}' and rel.relname = '${tbl}'
+       and con.contype = 'u'
+       and pg_get_constraintdef(con.oid) ilike '%model_name%'
+  loop
+    execute format('alter table ${T} drop constraint %I', c.conname);
+  end loop;
+end
+$emb_constraints$;
+
+alter table ${T}
+  add constraint ${tbl}_entity_kind_check
+    check (entity_kind in (${wrapList(kinds, 26)}));
+
+alter table ${T}
+  add constraint ${p}_emb_zero_padded
+    check (${ns}.emb_is_zero_padded(embedding, native_dims)),
+  add constraint ${p}_emb_unit_norm
+    check (${ns}.emb_is_unit(embedding, ${TOL})),
+  add constraint ${p}_emb_model_key_is_derived
+    check (model_key = provider || ':' || model_name || ':' || model_version),
+  add constraint ${p}_emb_one_row_per_entity_per_model
+    unique (${tenant}, entity_kind, entity_id, model_key);
+
+alter table ${T}
+  add constraint ${tbl}_model_key_fkey
+    foreign key (model_key) references ${ns}.embedding_models (model_key);
+
+-- 8. The old narrow search_text column is now redundant: its content was copied
+--    into body_text in step 4 and the weighted search_document is built from the
+--    three new text columns. Dropping it is destructive, so it is left to a
+--    follow-up migration once the application has stopped writing it.
+--    ALTER TABLE ${T} DROP COLUMN search_text;
 `
   : `
 -- ${T} does not exist yet in any deployed environment; this migration is the
@@ -584,17 +680,18 @@ begin;
 
 set local search_path = ${ns}, extensions, public;
 
-create schema if not exists ${ns};
-create schema if not exists extensions;
-create extension if not exists vector with schema extensions;
 create extension if not exists pgcrypto with schema extensions;
+
+-- ---------------------------------------------------------------------
+-- Registry and helper functions first. The data steps below call emb_pad()
+-- and join embedding_models, so these have to exist before the rows are
+-- rewritten. This text is the first half of
+-- db/schema/postgres/0100_${p}_embeddings.sql, emitted from the same source, so
+-- the two files cannot drift.
+-- ---------------------------------------------------------------------
+${pgPartA.trim()}
 ${widenExisting}
--- ---------------------------------------------------------------------
--- Re-apply the declarative schema. Everything below is idempotent and
--- matches db/schema/postgres/0100_${p}_embeddings.sql exactly; dpm diff
--- against that file must come back empty once this has run.
--- ---------------------------------------------------------------------
-\\i db/schema/postgres/0100_${p}_embeddings.sql
+${pgPartB.trim()}
 
 commit;
 `;
@@ -1654,6 +1751,19 @@ non-empty table blocks writes during backfill. The \`CREATE VECTOR INDEX\`
 statement is therefore left commented out in the schema file and applied
 deliberately.
 
+## Prerequisites
+
+| component | minimum | why |
+| --- | --- | --- |
+| pgvector | ${C.requires.pgvector} | \`halfvec\`, \`binary_quantize()\`, \`subvector()\`, \`l2_norm()\` and the \`bit_hamming_ops\` / \`halfvec_cosine_ops\` operator classes all landed in 0.7.0. On 0.6.x this schema fails to create - the types simply are not there. |
+| PostgreSQL | ${C.requires.postgres} | STORED generated columns, \`gen_random_uuid()\`. |
+| pgcrypto | migration only | \`digest()\` when backfilling \`content_sha256\`. |
+| CockroachDB | ${C.requires.cockroachdb} | \`VECTOR\` and the C-SPANN index, plus \`feature.vector_index.enabled\`. |
+
+\`\`\`sql
+select extversion from pg_extension where extname = 'vector';  -- expect >= 0.7.0
+\`\`\`
+
 ## Regenerating
 
 \`\`\`bash
@@ -1702,6 +1812,14 @@ test('the vendored contract has not drifted from the fleet copy', () => {
     'db/embedding-contract.json differs from the fleet contract this repo was generated against. ' +
       'Re-vendor it and rerun the generator in every org rather than editing one copy.',
   );
+});
+
+test('the contract states the pgvector floor these types actually need', () => {
+  // halfvec / binary_quantize / subvector / l2_norm / bit_hamming_ops are all
+  // 0.7.0 features. A deployment on 0.6.x fails at CREATE TABLE, not at query
+  // time, so the floor belongs in the contract and in the DDL header.
+  assert.equal(contract.requires.pgvector, '>=0.7.0');
+  assert.match(pg, /Requires pgvector >=0\.7\.0/);
 });
 
 test('every registered model fits the canonical width', () => {

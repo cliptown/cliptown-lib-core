@@ -4,7 +4,7 @@
 -- CI gate:     node scripts/embeddings/generate.mjs --check
 --
 -- Contract:    ores-embedding-contract 2026.08.29
--- Contract sha256: 39b8e1599d227a97f2362fdb6d3495dd38853b3345d7b05e90b64088884f9250
+-- Contract sha256: 98976465928699fb3c6c20728e4ad9f42a9d4ba0a626332f9184317c77c1e844
 -- Manifest sha256: 155aac5a7bf2217847b0773bc2605011776db7f66e8d1562a3134b4fee9dcc64
 -- Owning GitHub org: cliptown
 --

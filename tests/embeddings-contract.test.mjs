@@ -26,10 +26,18 @@ const PREFIX = 1024;
 test('the vendored contract has not drifted from the fleet copy', () => {
   assert.equal(
     createHash('sha256').update(contractRaw).digest('hex'),
-    '39b8e1599d227a97f2362fdb6d3495dd38853b3345d7b05e90b64088884f9250',
+    '98976465928699fb3c6c20728e4ad9f42a9d4ba0a626332f9184317c77c1e844',
     'db/embedding-contract.json differs from the fleet contract this repo was generated against. ' +
       'Re-vendor it and rerun the generator in every org rather than editing one copy.',
   );
+});
+
+test('the contract states the pgvector floor these types actually need', () => {
+  // halfvec / binary_quantize / subvector / l2_norm / bit_hamming_ops are all
+  // 0.7.0 features. A deployment on 0.6.x fails at CREATE TABLE, not at query
+  // time, so the floor belongs in the contract and in the DDL header.
+  assert.equal(contract.requires.pgvector, '>=0.7.0');
+  assert.match(pg, /Requires pgvector >=0.7.0/);
 });
 
 test('every registered model fits the canonical width', () => {

@@ -18,6 +18,16 @@
     "crossModelComparisonNote": "Vectors from different models occupy different spaces. A query MUST filter on (provider, model_name, model_version) - or on model_key, which denormalizes the three - before any distance operator is applied. Every generated query and every generated index carries that predicate. Padding does not make an OpenAI vector comparable to a Gemini vector; it only makes them the same width."
   },
 
+  "requires": {
+    "pgvector": ">=0.7.0",
+    "pgvectorRationale": "halfvec, binary_quantize(), subvector(), l2_norm(), l2_normalize() and the bit_hamming_ops / halfvec_cosine_ops operator classes all arrived in pgvector 0.7.0. On 0.6.x this schema does not merely perform worse - it fails to create, because the types and the operator classes do not exist. Check with: SELECT extversion FROM pg_extension WHERE extname = 'vector'.",
+    "postgres": ">=14",
+    "postgresRationale": "STORED generated columns are PostgreSQL 12+; gen_random_uuid() is core from 13. 14 is the floor we actually deploy.",
+    "cockroachdb": ">=25.2",
+    "cockroachdbRationale": "The VECTOR type and the C-SPANN vector index; the index additionally needs SET CLUSTER SETTING feature.vector_index.enabled = true.",
+    "pgcrypto": "required only by the widening migration, for digest() when backfilling content_sha256"
+  },
+
   "ann": {
     "problem": "pgvector can STORE up to 16000 dimensions but can only INDEX 2000 dimensions with the vector type and 4000 with halfvec. A vector(4100) column therefore cannot carry an HNSW or IVFFlat index directly, at any operator class. Any design that declares vector(4100) and then writes CREATE INDEX ... USING hnsw (embedding vector_cosine_ops) does not work; it fails at index creation time.",
     "strategy": "binary-quantize-candidates-then-exact-rerank",
