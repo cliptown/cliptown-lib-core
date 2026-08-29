@@ -185,9 +185,8 @@ fn validate_wrapped_key_material(wrapped_key: &WrappedContentKey) -> Result<(), 
     }
     let wrapped_key_bytes = decode_base64_bounded(&wrapped_key.wrapped_key_base64, 4_096)
         .map_err(|_| CoreError::InvalidWrappedKey)?;
-    match wrapped_key_bytes.len() < 32 {
-        true => return Err(CoreError::InvalidWrappedKey),
-        false => {}
+    if wrapped_key_bytes.len() < 32 {
+        return Err(CoreError::InvalidWrappedKey);
     }
     validate_sha256_base64(&wrapped_key.associated_data_hash_base64)
         .map_err(|_| CoreError::InvalidWrappedKey)
