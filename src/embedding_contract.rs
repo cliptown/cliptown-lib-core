@@ -57,6 +57,12 @@ pub struct PaddedEmbedding {
 }
 
 impl PaddedEmbedding {
+    /// Validates provider/model dimensions and appends trailing zeros to 4,100 slots.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the provider/model pairing is unknown, the source
+    /// dimension is unsupported, a value is non-finite, or the vector has no signal.
     pub fn from_model_output(
         provider: EmbeddingProvider,
         model: &str,
