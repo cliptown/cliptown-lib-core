@@ -1,0 +1,29 @@
+{
+  "contractVersion": "2.0.0",
+  "owner": "cliptown",
+  "repositoryRole": "lib-core",
+  "externalSqlAuthorities": [],
+  "dimensions": {
+    "storage": 4100,
+    "maximumSource": 4096,
+    "padding": "trailing-zero"
+  },
+  "codeFirst": {
+    "typeSpec": "embedding-contract/embeddings.tsp",
+    "jsonSchema": "embedding-contract/embedding-record.schema.json",
+    "rustModel": "src/embedding_contract.rs"
+  },
+  "databaseFirst": {
+    "postgres": "embedding-contract/sql/postgres/desired.sql",
+    "cockroachdb": "embedding-contract/sql/cockroachdb/desired.sql",
+    "postgresDesiredState": "embedding-contract/sql/postgres/desired.sql",
+    "cockroachdbDesiredState": "embedding-contract/sql/cockroachdb/desired.sql",
+    "postgresQuery": "embedding-contract/sql/postgres/hybrid-search.sql",
+    "cockroachdbQuery": "embedding-contract/sql/cockroachdb/hybrid-search.sql",
+    "migrationsAreAppliedAtStartup": false
+  },
+  "conformance": {
+    "verifier": "scripts/verify-embedding-contract.mjs",
+    "typeSpecCompiler": "@typespec/compiler@1.15.0"
+  }
+}
