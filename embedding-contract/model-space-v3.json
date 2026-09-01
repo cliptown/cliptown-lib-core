@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cliptown/cliptown-interfaces/codex/embedding-model-space-v3-20260901/embedding-contract/model-space-v3.schema.json",
+  "contractVersion": "3.0.0",
+  "registryRevision": "2026-09-01",
+  "product": "cliptown",
+  "repositoryRole": "lib-core",
+  "authority": { "libCore": "cliptown/cliptown-lib-core", "ormCore": "cliptown/cliptown-orm-core", "interfaces": "cliptown/cliptown-interfaces", "externalSqlAuthorities": [], "startupDdl": false },
+  "storage": { "sourceDimensions": { "min": 1, "max": 4096 }, "slots": 4100, "missing": "null", "padding": "trailing-zero-only", "reject": ["non-finite", "all-zero-learned-prefix"] },
+  "spaceFamily": {
+    "key": ["provider", "model", "modelRevision", "sourceDimensions", "normalization", "taskProfile", "instructionFamily", "modality", "distanceMetric"],
+    "provenance": ["inputRole", "instructionSha256", "contentHash"],
+    "compatibleRoles": ["symmetric:symmetric", "query:document", "document:query", "classification:classification", "clustering:clustering"],
+    "crossFamilyComparison": "forbidden"
+  },
+  "database": { "requiredColumns": ["model_revision", "task_profile", "input_role", "instruction_sha256", "modality", "distance_metric", "ann_strategy", "ann_dimensions", "space_family_v3"], "lexical": "weighted-tsvector", "tenantFilterBeforeCandidates": true, "boundedCandidates": true, "exactRerank": true },
+  "ann": {
+    "default": "binary-full-rerank",
+    "limits": { "vector": 2000, "halfvec": 4000, "binary": 4100 },
+    "rules": [
+      { "when": "source<=4000", "allow": ["halfvec-exact", "binary-full-rerank", "exact-only"] },
+      { "when": "source>4000 && mrl", "allow": ["halfvec-mrl", "binary-full-rerank", "exact-only"] },
+      { "when": "source>4000 && !mrl", "allow": ["binary-full-rerank", "exact-only"], "forbid": ["prefix-truncation", "halfvec-exact", "halfvec-mrl"] }
+    ]
+  },
+  "providers": { "embedding": ["openai", "google", "qwen", "nvidia", "baai", "custom"], "generation": ["openai", "anthropic", "google", "qwen", "nvidia", "baai", "custom"], "anthropic": "generation-provenance-only" },
+  "models": {
+    "openai/text-embedding-ada-002": { "dims": [1536, 1536], "shortenable": false, "mrl": false, "instructionAware": false, "ann": ["halfvec-exact", 1536] },
+    "openai/text-embedding-3-small": { "dims": [1, 1536], "default": 1536, "shortenable": true, "mrl": false, "instructionAware": false, "ann": ["halfvec-exact", 1536] },
+    "openai/text-embedding-3-large": { "dims": [1, 3072], "default": 3072, "shortenable": true, "mrl": false, "instructionAware": false, "ann": ["halfvec-exact", 3072] },
+    "google/gemini-embedding-001": { "dims": [128, 3072], "default": 3072, "shortenable": true, "mrl": true, "instructionAware": true, "ann": ["halfvec-exact", 3072] },
+    "google/gemini-embedding-2": { "dims": [128, 3072], "default": 3072, "shortenable": true, "mrl": true, "instructionAware": true, "ann": ["halfvec-exact", 3072] },
+    "qwen/Qwen3-Embedding-8B": { "dims": [32, 4096], "default": 4096, "shortenable": true, "mrl": true, "instructionAware": true, "ann": ["halfvec-mrl", 4000] },
+    "nvidia/NV-Embed-v2": { "dims": [4096, 4096], "shortenable": false, "mrl": false, "instructionAware": true, "ann": ["binary-full-rerank", 4100] },
+    "baai/bge-en-icl": { "dims": [4096, 4096], "shortenable": false, "mrl": false, "instructionAware": true, "ann": ["binary-full-rerank", 4100] }
+  }
+}
