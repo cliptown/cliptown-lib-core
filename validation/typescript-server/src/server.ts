@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { RequestMetaSchema } from "@cliptown/cliptown-validation";
 
-const token = z.string().trim().min(1).max(128);
+const token = z.string().min(1).max(128);
 
 export const TrustedActorSchema = z.object({
   userId: token,
@@ -15,7 +15,7 @@ export const ServerRequestContextSchema = RequestMetaSchema.extend({
 }).strict();
 
 export const InternalCommandSchema = z.object({
-  operationId: z.string().trim().min(1).max(256),
+  operationId: z.string().min(1).max(256),
   idempotencyKey: token.optional(),
   context: ServerRequestContextSchema,
   payload: z.unknown(),
