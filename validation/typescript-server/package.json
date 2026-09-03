@@ -5,7 +5,7 @@
   "type": "module",
   "files": ["dist"],
   "exports": {".": {"types": "./dist/server.d.ts", "import": "./dist/server.js"}},
-  "scripts": {"build": "tsc -p tsconfig.json", "test": "npm run build"},
+  "scripts": {"build": "tsc -p tsconfig.json", "test": "npm run build && node --test test/server.test.mjs"},
   "dependencies": {"@cliptown/cliptown-validation": "file:../typescript", "zod": "^4.0.0"},
   "devDependencies": {"typescript": "^5.9.0"}
 }
