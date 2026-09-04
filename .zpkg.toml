@@ -9,6 +9,7 @@ repository = "https://github.com/cliptown/cliptown-lib-core"
 dir = ".vendor/.zed"
 
 [dependencies]
+"oresoftware/ores-locks-and-leases" = "=0.1.1"
 "cliptown/cliptown-interfaces" = "^0.1.0"
 
 [targets.rust]
@@ -28,3 +29,10 @@ include = [
 
 [smoke_test]
 command = "cargo test --locked --all-targets"
+
+# The org's lock routines: ORESoftware/ores-locks-and-leases wrapped with
+# this org's key prefix and catalog. Nested zed package; see locks/README.md.
+[targets.locks]
+dir = "locks"
+name = "cliptown-locks"
+adapter = "none"

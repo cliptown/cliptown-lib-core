@@ -1,0 +1,16 @@
+name: cliptown_locks
+description: "cliptown lock routines: ores_locks_and_leases with the cliptown key prefix and lock catalog."
+version: 0.1.0
+repository: https://github.com/cliptown/cliptown-lib-core
+publish_to: none
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  ores_locks_and_leases:
+    path: ../.vendor/.zed/oresoftware/ores-locks-and-leases/src/dart
+
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.25.0
