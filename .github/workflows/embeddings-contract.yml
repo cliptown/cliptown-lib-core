@@ -1,0 +1,26 @@
+name: embeddings-contract
+
+# The generated SQL, ORM, TypeSpec and JSON Schema in this repo are derived from
+# db/embedding-contract.json + db/org-manifest.json. This gate fails when any of
+# them has been hand-edited or when the vendored contract has drifted from the
+# fleet copy - either is a silent correctness bug in retrieval, so it fails the
+# build rather than warning.
+
+on:
+  push:
+    paths: ['db/**', 'schema/**', 'typespec/**', 'generated/**', 'scripts/embeddings/**', 'tests/embeddings-contract.test.mjs']
+  pull_request:
+    paths: ['db/**', 'schema/**', 'typespec/**', 'generated/**', 'scripts/embeddings/**', 'tests/embeddings-contract.test.mjs']
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: generated artefacts are current
+        run: node scripts/embeddings/generate.mjs --check
+      - name: contract invariants hold
+        run: node --test tests/embeddings-contract.test.mjs

@@ -9,6 +9,11 @@ repository = "https://github.com/cliptown/cliptown-lib-core"
 keywords = ["clipboard", "encryption", "sync", "authorization"]
 categories = ["data-structures", "cryptography"]
 
+[features]
+default = ["read-only"]
+read-only = []
+read-write = ["read-only"]
+
 [dependencies]
 base64 = "0.22.1"
 serde = { version = "1.0.219", features = ["derive"] }
