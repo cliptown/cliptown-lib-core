@@ -13,17 +13,17 @@ $$;
 
 CREATE OR REPLACE FUNCTION cliptown.pad_embedding_v3(input REAL[]) RETURNS VECTOR(4100)
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE AS $$
-  SELECT CASE WHEN cardinality(input) BETWEEN 1 AND 4096
-    THEN (input || array_fill(0.0::REAL, ARRAY[4100-cardinality(input)]))::VECTOR(4100)
+  SELECT CASE WHEN pg_catalog.cardinality(input) BETWEEN 1 AND 4096
+    THEN (input || pg_catalog.array_fill(0.0::REAL, ARRAY[4100-pg_catalog.cardinality(input)]))::VECTOR(4100)
     ELSE NULL END
 $$;
 
 CREATE OR REPLACE FUNCTION cliptown.embedding_is_valid_v3(input VECTOR(4100), learned SMALLINT)
 RETURNS BOOLEAN LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE AS $$
   SELECT learned BETWEEN 1 AND 4096
-    AND vector_dims(input)=4100
-    AND vector_norm(subvector(input,1,learned))>0
-    AND vector_norm(subvector(input,learned+1,4100-learned))<=0.000001
+    AND public.vector_dims(input)=4100
+    AND public.vector_norm(public.subvector(input,1,learned))>0
+    AND public.vector_norm(public.subvector(input,learned+1,4100-learned))<=0.000001
 $$;
 
 CREATE TABLE IF NOT EXISTS cliptown.embedding_generation_profiles_v3 (
@@ -177,16 +177,21 @@ CREATE INDEX IF NOT EXISTS semantic_match_events_v3_candidate_fk_idx ON cliptown
 
 ALTER TABLE cliptown.semantic_embeddings_v3 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cliptown.semantic_embeddings_v3 FORCE ROW LEVEL SECURITY;
-CREATE POLICY semantic_embeddings_v3_tenant_isolation ON cliptown.semantic_embeddings_v3
-  USING(tenant_id=cliptown.current_tenant_id_v3()) WITH CHECK(tenant_id=cliptown.current_tenant_id_v3());
+DO $policy$ BEGIN
+  CREATE POLICY semantic_embeddings_v3_tenant_isolation ON cliptown.semantic_embeddings_v3
+    USING(tenant_id=cliptown.current_tenant_id_v3()) WITH CHECK(tenant_id=cliptown.current_tenant_id_v3());
+EXCEPTION WHEN duplicate_object THEN NULL; END $policy$;
 ALTER TABLE cliptown.semantic_alert_rules_v3 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cliptown.semantic_alert_rules_v3 FORCE ROW LEVEL SECURITY;
-CREATE POLICY semantic_alert_rules_v3_tenant_isolation ON cliptown.semantic_alert_rules_v3
-  USING(tenant_id=cliptown.current_tenant_id_v3()) WITH CHECK(tenant_id=cliptown.current_tenant_id_v3());
+DO $policy$ BEGIN
+  CREATE POLICY semantic_alert_rules_v3_tenant_isolation ON cliptown.semantic_alert_rules_v3
+    USING(tenant_id=cliptown.current_tenant_id_v3()) WITH CHECK(tenant_id=cliptown.current_tenant_id_v3());
+EXCEPTION WHEN duplicate_object THEN NULL; END $policy$;
 ALTER TABLE cliptown.semantic_match_events_v3 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cliptown.semantic_match_events_v3 FORCE ROW LEVEL SECURITY;
-CREATE POLICY semantic_match_events_v3_tenant_isolation ON cliptown.semantic_match_events_v3
-  USING(tenant_id=cliptown.current_tenant_id_v3()) WITH CHECK(tenant_id=cliptown.current_tenant_id_v3());
-
+DO $policy$ BEGIN
+  CREATE POLICY semantic_match_events_v3_tenant_isolation ON cliptown.semantic_match_events_v3
+    USING(tenant_id=cliptown.current_tenant_id_v3()) WITH CHECK(tenant_id=cliptown.current_tenant_id_v3());
+EXCEPTION WHEN duplicate_object THEN NULL; END $policy$;
 -- No global filtered HNSW graph is created. Exact search is the fail-closed baseline.
 -- A reviewed generator may add literal per-space ANN indexes only after exact-vs-ANN recall evidence.
