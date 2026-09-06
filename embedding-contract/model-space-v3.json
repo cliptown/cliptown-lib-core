@@ -1,0 +1,66 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cliptown/cliptown-interfaces/main/embedding-contract/model-space-v3.schema.json",
+  "contractVersion": "3.1.0",
+  "registryRevision": "2026-09-03",
+  "product": "cliptown",
+  "repositoryRole": "lib-core",
+  "authority": {
+    "libCore": "cliptown/cliptown-lib-core",
+    "ormCore": "cliptown/cliptown-orm-core",
+    "interfaces": "cliptown/cliptown-interfaces",
+    "externalSqlAuthorities": [],
+    "startupDdl": false
+  },
+  "storage": {
+    "sourceDimensions": { "min": 1, "max": 4096 },
+    "slots": 4100,
+    "missing": "null",
+    "padding": "trailing-zero-only",
+    "reject": ["non-finite", "all-zero-learned-prefix", "non-zero-tail"]
+  },
+  "spaceIdentity": [
+    "embeddingProvider", "model", "modelRevision", "sourceDimensions",
+    "normalization", "taskProfile", "instructionFamily", "instructionSha256",
+    "inputRole", "modality", "distanceMetric", "preprocessingSha256"
+  ],
+  "compatibleRoles": [
+    "symmetric:symmetric", "query:document",
+    "classification:classification", "clustering:clustering"
+  ],
+  "purposes": ["clip_search", "clip_deduplication", "discovery"],
+  "providers": {
+    "embedding": ["openai", "google", "voyage", "qwen", "nvidia", "baai", "custom"],
+    "generation": ["openai", "anthropic", "google", "qwen", "nvidia", "baai", "custom"],
+    "anthropic": "generation-provenance-only"
+  },
+  "models": {
+    "openai/text-embedding-ada-002": { "min": 1536, "default": 1536, "max": 1536, "mrl": false, "strategy": "halfvec-exact", "annDimensions": 1536 },
+    "openai/text-embedding-3-small": { "min": 1, "default": 1536, "max": 1536, "mrl": true, "strategy": "halfvec-exact", "annDimensions": 1536 },
+    "openai/text-embedding-3-large": { "min": 1, "default": 3072, "max": 3072, "mrl": true, "strategy": "halfvec-exact", "annDimensions": 3072 },
+    "google/gemini-embedding-001": { "min": 128, "default": 3072, "max": 3072, "mrl": true, "strategy": "halfvec-exact", "annDimensions": 3072 },
+    "qwen/Qwen3-Embedding-8B": { "min": 32, "default": 4096, "max": 4096, "mrl": true, "strategy": "halfvec-mrl", "annDimensions": 4000 },
+    "nvidia/NV-Embed-v2": { "min": 4096, "default": 4096, "max": 4096, "mrl": false, "strategy": "binary-full-rerank", "annDimensions": 4100 },
+    "baai/bge-en-icl": { "min": 4096, "default": 4096, "max": 4096, "mrl": false, "strategy": "binary-full-rerank", "annDimensions": 4100 },
+    "voyage/voyage-4-large": { "min": 256, "default": 1024, "max": 2048, "mrl": true, "strategy": "halfvec-exact", "annDimensions": 1024 },
+    "voyage/voyage-4": { "min": 256, "default": 1024, "max": 2048, "mrl": true, "strategy": "halfvec-exact", "annDimensions": 1024 },
+    "voyage/voyage-4-lite": { "min": 256, "default": 1024, "max": 2048, "mrl": true, "strategy": "halfvec-exact", "annDimensions": 1024 }
+  },
+  "database": {
+    "tenantContext": "transaction-local-and-missing-safe",
+    "tenantCompositeForeignKeys": true,
+    "lexicalCandidates": "independent-weighted-tsvector",
+    "semanticCandidates": "exact-baseline",
+    "fusion": "reciprocal-rank-fusion",
+    "exactRerank": true,
+    "globalFilteredAnnIndex": false,
+    "annActivation": "literal-reviewed-space-only-after-recall-evidence"
+  },
+  "activation": {
+    "profilesEnabledByDefault": false,
+    "spacesEnabledByDefault": false,
+    "requires": [
+      "migration-replay", "tenant-isolation", "lexical-only-regression",
+      "exact-vs-ann-recall", "rollback", "backup-restore"
+    ]
+  }
+}

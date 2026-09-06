@@ -153,9 +153,8 @@ fn validated_order_key(
     batch: &SyncBatch,
     latest_allowed_timestamp: i64,
 ) -> Result<MutationOrderKey, CoreError> {
-    match mutation.mutation_id.is_nil() || mutation.clip_id.is_nil() {
-        true => return Err(CoreError::InvalidMutation),
-        false => {}
+    if mutation.mutation_id.is_nil() || mutation.clip_id.is_nil() {
+        return Err(CoreError::InvalidMutation);
     }
     validate_portable_identifier(&mutation.owner_subject)
         .map_err(|_| CoreError::InvalidMutation)?;
@@ -168,15 +167,13 @@ fn validated_order_key(
         (true, true) => {}
         _ => return Err(CoreError::OwnershipMismatch),
     }
-    match mutation.logical_clock > i64::MAX as u64 {
-        true => return Err(CoreError::LogicalClockOutOfRange),
-        false => {}
+    if mutation.logical_clock > i64::MAX as u64 {
+        return Err(CoreError::LogicalClockOutOfRange);
     }
-    match mutation.created_at_unix_millis < 0
+    if mutation.created_at_unix_millis < 0
         || mutation.created_at_unix_millis > latest_allowed_timestamp
     {
-        true => return Err(CoreError::FutureMutation),
-        false => {}
+        return Err(CoreError::FutureMutation);
     }
     validate_sha256_base64(&mutation.payload_sha256_base64)
         .map_err(|_| CoreError::InvalidMutation)?;

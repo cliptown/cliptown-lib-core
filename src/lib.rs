@@ -27,3 +27,5 @@ pub use sync::{
     validate_sync_batch, MutationKind, MutationOrderKey, SyncBatch, SyncMutation, SyncPolicy,
     ValidatedSyncBatch,
 };
+
+pub mod embedding_contract;
