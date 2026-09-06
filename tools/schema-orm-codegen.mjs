@@ -94,17 +94,28 @@ function listFiles(root) {
 }
 
 function writeGenerated(files, outputRoot) {
+  const policyReadme = join(outputRoot, 'README.md');
+  const policyReadmeContent = existsSync(policyReadme)
+    ? readFileSync(policyReadme, 'utf8')
+    : undefined;
   rmSync(outputRoot, { recursive: true, force: true });
   for (const [path, content] of files) {
     const target = join(outputRoot, path);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, content, 'utf8');
   }
+  if (policyReadmeContent !== undefined) {
+    writeFileSync(policyReadme, policyReadmeContent, 'utf8');
+  }
 }
 
 function checkGenerated(files, outputRoot) {
   const expectedPaths = [...files.keys()].sort();
-  const actualPaths = listFiles(outputRoot);
+  // generated/README.md is the checked-in policy exception: it documents the
+  // frozen tree but is intentionally not a generated artifact.
+  const actualPaths = listFiles(outputRoot).filter(
+    (path) => path !== 'README.md' && path !== 'readme.md',
+  );
   const failures = [];
   if (JSON.stringify(expectedPaths) !== JSON.stringify(actualPaths)) {
     failures.push(`generated file set differs\nexpected: ${expectedPaths.join(', ')}\nactual: ${actualPaths.join(', ')}`);
