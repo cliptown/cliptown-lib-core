@@ -26,3 +26,7 @@ jobs:
         run: |
           rustc --edition 2021 --test src/embedding_contract.rs -o /tmp/embedding-contract-tests
           /tmp/embedding-contract-tests
+      - name: Test adversarial provider and dimension boundaries
+        run: |
+          rustc --edition 2021 --test tests/embedding_contract_regression.rs -o /tmp/embedding-regression-tests
+          /tmp/embedding-regression-tests
