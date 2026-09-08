@@ -18,7 +18,7 @@
     "tools/schema-orm/shared.mjs",
     "tools/schema-orm/sql.mjs"
   ],
-  "generatorSha256": "1e25c452c280b127737fee2adb55ff6b11d2cb8f22d2311c58b96515072d240c",
+  "generatorSha256": "071d8e495936d59a3a2ea1f5c59cf4fab7ed63a6de7e118f19263cec55607362",
   "generatorVersion": 3,
   "interfaces": {
     "repository": "cliptown/cliptown-interfaces",
