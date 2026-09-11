@@ -242,16 +242,16 @@ mod tests {
     #[test]
     fn storage_traversal_and_duplicate_recipients_are_rejected() {
         let mut traversal = manifest();
+        assert_eq!(traversal.chunks.len(), 1, "fixture must contain one encrypted chunk");
         let Some(chunk) = traversal.chunks.first_mut() else {
-            assert!(false, "fixture must contain one encrypted chunk");
             return;
         };
         chunk.randomized_storage_key = "accounts/../secret/chunk".into();
         assert_eq!(traversal.validate(), Err(CoreError::InvalidStorageKey));
 
         let mut duplicate = manifest();
+        assert_eq!(duplicate.wrapped_keys.len(), 1, "fixture must contain one wrapped key");
         let Some(first_key) = duplicate.wrapped_keys.first().cloned() else {
-            assert!(false, "fixture must contain one wrapped key");
             return;
         };
         duplicate.wrapped_keys.push(first_key);
