@@ -129,13 +129,15 @@ impl Default for ObjectGrantPolicy {
 
 impl ObjectGrantPolicy {
     pub fn validate(self) -> Result<(), CoreError> {
-        match (
-            (60..=3_600).contains(&self.ttl_seconds),
-            self.max_object_bytes > 0 && self.max_object_bytes <= ABSOLUTE_MAX_OBJECT_BYTES,
-            self.max_chunks > 0 && self.max_chunks <= MAX_CHUNKS_PER_OBJECT as u32,
-        ) {
-            (true, true, true) => Ok(()),
-            _ => Err(CoreError::GrantPolicyOutOfBounds),
+        if (60..=3_600).contains(&self.ttl_seconds)
+            && self.max_object_bytes > 0
+            && self.max_object_bytes <= ABSOLUTE_MAX_OBJECT_BYTES
+            && self.max_chunks > 0
+            && self.max_chunks <= MAX_CHUNKS_PER_OBJECT as u32
+        {
+            Ok(())
+        } else {
+            Err(CoreError::GrantPolicyOutOfBounds)
         }
     }
 }
