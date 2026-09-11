@@ -160,12 +160,10 @@ fn validated_order_key(
         .map_err(|_| CoreError::InvalidMutation)?;
     validate_portable_identifier(&mutation.source_device_id)
         .map_err(|_| CoreError::InvalidMutation)?;
-    match (
-        mutation.owner_subject == batch.owner_subject,
-        mutation.source_device_id == batch.source_device_id,
-    ) {
-        (true, true) => {}
-        _ => return Err(CoreError::OwnershipMismatch),
+    if mutation.owner_subject != batch.owner_subject
+        || mutation.source_device_id != batch.source_device_id
+    {
+        return Err(CoreError::OwnershipMismatch);
     }
     if mutation.logical_clock > i64::MAX as u64 {
         return Err(CoreError::LogicalClockOutOfRange);
