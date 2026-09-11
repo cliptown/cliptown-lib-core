@@ -234,7 +234,10 @@ mod tests {
     #[test]
     fn models_openai_large_default_as_3072_and_allows_shortening() {
         let profile = model_dimensions(EmbeddingProvider::OpenAi, "text-embedding-3-large");
-        assert!(profile.is_some(), "OpenAI large model must remain registered");
+        assert!(
+            profile.is_some(),
+            "OpenAI large model must remain registered"
+        );
         let Some(profile) = profile else {
             return;
         };
