@@ -1,0 +1,57 @@
+name: embedding-contract-v3
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: embedding-contract-v3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: node scripts/verify-embedding-contract-v3.mjs
+      - run: npx --yes --package @typespec/compiler@1.15.0 tsp compile embedding-contract/model-space-v3.tsp --no-emit
+
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: embeddings
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d embeddings"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGDATABASE: embeddings
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+      - run: |
+          psql --set=ON_ERROR_STOP=1 --file embedding-contract/sql/postgres/desired-v3.sql
+          psql --set=ON_ERROR_STOP=1 --file embedding-contract/sql/postgres/hybrid-search-v3-exact.sql
+          psql --set=ON_ERROR_STOP=1 --file embedding-contract/sql/postgres/test-v3.sql
