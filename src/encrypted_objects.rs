@@ -129,13 +129,15 @@ impl Default for ObjectGrantPolicy {
 
 impl ObjectGrantPolicy {
     pub fn validate(self) -> Result<(), CoreError> {
-        match (
-            (60..=3_600).contains(&self.ttl_seconds),
-            self.max_object_bytes > 0 && self.max_object_bytes <= ABSOLUTE_MAX_OBJECT_BYTES,
-            self.max_chunks > 0 && self.max_chunks <= MAX_CHUNKS_PER_OBJECT as u32,
-        ) {
-            (true, true, true) => Ok(()),
-            _ => Err(CoreError::GrantPolicyOutOfBounds),
+        if (60..=3_600).contains(&self.ttl_seconds)
+            && self.max_object_bytes > 0
+            && self.max_object_bytes <= ABSOLUTE_MAX_OBJECT_BYTES
+            && self.max_chunks > 0
+            && self.max_chunks <= MAX_CHUNKS_PER_OBJECT as u32
+        {
+            Ok(())
+        } else {
+            Err(CoreError::GrantPolicyOutOfBounds)
         }
     }
 }
@@ -242,13 +244,27 @@ mod tests {
     #[test]
     fn storage_traversal_and_duplicate_recipients_are_rejected() {
         let mut traversal = manifest();
-        traversal.chunks[0].randomized_storage_key = "accounts/../secret/chunk".into();
+        assert_eq!(
+            traversal.chunks.len(),
+            1,
+            "fixture must contain one encrypted chunk"
+        );
+        let Some(chunk) = traversal.chunks.first_mut() else {
+            return;
+        };
+        chunk.randomized_storage_key = "accounts/../secret/chunk".into();
         assert_eq!(traversal.validate(), Err(CoreError::InvalidStorageKey));
 
         let mut duplicate = manifest();
-        duplicate
-            .wrapped_keys
-            .push(duplicate.wrapped_keys[0].clone());
+        assert_eq!(
+            duplicate.wrapped_keys.len(),
+            1,
+            "fixture must contain one wrapped key"
+        );
+        let Some(first_key) = duplicate.wrapped_keys.first().cloned() else {
+            return;
+        };
+        duplicate.wrapped_keys.push(first_key);
         assert_eq!(duplicate.validate(), Err(CoreError::InvalidWrappedKey));
     }
 }

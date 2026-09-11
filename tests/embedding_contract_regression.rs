@@ -1,4 +1,4 @@
-#[allow(dead_code)]
+#[allow(dead_code, unreachable_pub)]
 #[path = "../src/embedding_contract.rs"]
 mod embedding_contract;
 
@@ -9,7 +9,9 @@ use embedding_contract::{
 
 fn signal(dimensions: usize) -> Vec<f32> {
     let mut values = vec![0.0; dimensions];
-    values[dimensions - 1] = 1.0;
+    if let Some(last) = values.last_mut() {
+        *last = 1.0;
+    }
     values
 }
 
@@ -34,14 +36,27 @@ fn every_supported_model_boundary_fits_canonical_storage() {
     ];
 
     for (provider, model, dimensions) in cases {
-        let embedding = PaddedEmbedding::from_model_output(provider, model, signal(dimensions))
-            .unwrap_or_else(|error| panic!("{provider:?}/{model}/{dimensions}: {error}"));
+        let result = PaddedEmbedding::from_model_output(provider, model, signal(dimensions));
+        assert!(
+            result.is_ok(),
+            "expected accepted embedding for {provider:?}/{model}/{dimensions}: {result:?}"
+        );
+        let Ok(embedding) = result else {
+            continue;
+        };
         assert_eq!(embedding.original_dimensions(), dimensions);
         assert_eq!(embedding.storage_dimensions(), EMBEDDING_STORAGE_DIMENSIONS);
-        assert_eq!(embedding.values()[dimensions - 1], 1.0);
-        assert!(embedding.values()[dimensions..]
-            .iter()
-            .all(|value| *value == 0.0));
+        assert_eq!(
+            embedding
+                .values()
+                .get(dimensions.saturating_sub(1))
+                .copied(),
+            Some(1.0)
+        );
+        assert!(embedding
+            .values()
+            .get(dimensions..)
+            .is_some_and(|tail| tail.iter().all(|value| *value == 0.0)));
     }
 }
 
@@ -101,14 +116,23 @@ fn rejects_empty_zero_nan_and_infinite_vectors() {
 
 #[test]
 fn padding_preserves_prefix_order_sign_and_norm() {
-    let embedding = PaddedEmbedding::from_model_output(
+    let result = PaddedEmbedding::from_model_output(
         EmbeddingProvider::OpenAi,
         "text-embedding-3-small",
         vec![3.0, -4.0],
-    )
-    .expect("two-dimensional MRL output");
-    assert_eq!(&embedding.values()[..2], &[3.0, -4.0]);
-    assert!(embedding.values()[2..].iter().all(|value| *value == 0.0));
+    );
+    assert!(
+        result.is_ok(),
+        "two-dimensional MRL output must be accepted"
+    );
+    let Ok(embedding) = result else {
+        return;
+    };
+    assert_eq!(embedding.values().get(..2), Some(&[3.0, -4.0][..]));
+    assert!(embedding
+        .values()
+        .get(2..)
+        .is_some_and(|tail| tail.iter().all(|value| *value == 0.0)));
     assert_eq!(embedding.l2_norm(), 5.0);
 }
 
@@ -126,7 +150,14 @@ fn model_profiles_are_monotonic_and_never_exceed_source_capacity() {
         (EmbeddingProvider::Custom, "future-model"),
     ];
     for (provider, model) in models {
-        let profile = model_dimensions(provider, model).expect("registered model");
+        let profile = model_dimensions(provider, model);
+        assert!(
+            profile.is_some(),
+            "registered model must retain a dimension profile"
+        );
+        let Some(profile) = profile else {
+            continue;
+        };
         assert!(profile.minimum <= profile.default);
         assert!(profile.default <= profile.maximum);
         assert!(profile.maximum <= MAXIMUM_SOURCE_DIMENSIONS);

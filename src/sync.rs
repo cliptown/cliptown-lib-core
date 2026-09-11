@@ -160,12 +160,10 @@ fn validated_order_key(
         .map_err(|_| CoreError::InvalidMutation)?;
     validate_portable_identifier(&mutation.source_device_id)
         .map_err(|_| CoreError::InvalidMutation)?;
-    match (
-        mutation.owner_subject == batch.owner_subject,
-        mutation.source_device_id == batch.source_device_id,
-    ) {
-        (true, true) => {}
-        _ => return Err(CoreError::OwnershipMismatch),
+    if mutation.owner_subject != batch.owner_subject
+        || mutation.source_device_id != batch.source_device_id
+    {
+        return Err(CoreError::OwnershipMismatch);
     }
     if mutation.logical_clock > i64::MAX as u64 {
         return Err(CoreError::LogicalClockOutOfRange);
@@ -231,7 +229,11 @@ mod tests {
             source_device_id: "device:a".into(),
             mutations: vec![mutation(2, 2, 9), mutation(1, 1, 7)],
         };
-        let validated = validate_sync_batch(1_000, &batch, SyncPolicy::default()).unwrap();
+        let result = validate_sync_batch(1_000, &batch, SyncPolicy::default());
+        assert!(result.is_ok(), "valid sync batch must be accepted");
+        let Ok(validated) = result else {
+            return;
+        };
         assert_eq!(
             validated.canonical_mutation_ids,
             vec![Uuid::from_u128(1), Uuid::from_u128(2)]
