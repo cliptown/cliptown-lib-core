@@ -24,6 +24,17 @@ enum Domain {
 /// Build `cliptown/<domain>/<name>`.
 LockKey key(Domain domain, String name) => LockKey('$org/${domain.wire}/$name');
 
+String _fillPlaceholders(String template, List<String> fill, [int index = 0]) {
+  final match = RegExp(r'\{[^}]*\}').firstMatch(template);
+  if (match == null) {
+    return template;
+  }
+  final replacement = index < fill.length ? fill[index] : '';
+  final prefix = template.substring(0, match.start);
+  final suffix = template.substring(match.end);
+  return '$prefix$replacement${_fillPlaceholders(suffix, fill, index + 1)}';
+}
+
 /// One catalog row: the defaults a call site should use for a named lock.
 final class Entry {
   final Domain domain;
@@ -43,17 +54,13 @@ final class Entry {
   });
 
   /// The key for this entry with `{placeholders}` filled from [fill], in order of appearance.
-  LockKey key(List<String> fill) {
-    var i = 0;
-    final filled = name.replaceAllMapped(
-      RegExp(r'\{[^}]*\}'),
-      (_) => i < fill.length ? fill[i++] : '',
-    );
-    return LockKey('$org/${domain.wire}/$filled');
-  }
+  LockKey key(List<String> fill) =>
+      LockKey('$org/${domain.wire}/${_fillPlaceholders(name, fill)}');
 
   /// The plan this entry's defaults produce.
-  LockPlan get plan => planFor(layers, pgScope, wait);
+  LockPlan get plan {
+    return planFor(layers, pgScope, wait);
+  }
 }
 
 LockPlan planFor(LockLayers layers, PgScope scope, bool wait) =>
