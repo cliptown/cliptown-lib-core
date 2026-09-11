@@ -154,7 +154,12 @@ pub fn model_dimensions(provider: EmbeddingProvider, model: &str) -> Option<Mode
         | (EmbeddingProvider::Voyage, "voyage-4")
         | (EmbeddingProvider::Voyage, "voyage-4-lite") => (256, 1024, 2048, true),
         (EmbeddingProvider::Custom, _) => (1, 1536, 4096, false),
-        _ => return None,
+        (EmbeddingProvider::OpenAi, _)
+        | (EmbeddingProvider::Google, _)
+        | (EmbeddingProvider::Voyage, _)
+        | (EmbeddingProvider::Qwen, _)
+        | (EmbeddingProvider::Nvidia, _)
+        | (EmbeddingProvider::Baai, _) => return None,
     };
     Some(ModelDimensions {
         minimum: dimensions.0,
