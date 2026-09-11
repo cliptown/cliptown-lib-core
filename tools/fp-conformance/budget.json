@@ -1,15 +1,16 @@
 {
   "budget": {
     "RS001": 14,
-    "RS003": 1,
+    "RS004": 1,
+    "XX001": 1,
     "XX002": 1
   },
   "stats": {
-    "dart": 0,
-    "files": 7,
-    "lines": 1091,
-    "rust": 7,
-    "ts": 0
+    "dart": 1,
+    "files": 16,
+    "lines": 2577,
+    "rust": 12,
+    "ts": 3
   },
   "version": "1.0.0"
 }
