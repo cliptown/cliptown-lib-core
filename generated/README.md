@@ -54,3 +54,22 @@ you are committing a regeneration, the pre-commit guard needs to be told so:
 ```sh
 REGEN=1 git commit -m "Regenerate clients from the updated route map"
 ```
+
+## Gitignored trees
+
+If `generated/` is in `.gitignore`, generated artifacts stay off VCS. Still commit
+this `README.md` (`git add -f generated/README.md` or a `.gitignore` exception) so
+the freeze policy is visible. Example exception:
+
+```
+generated/**
+!generated/README.md
+```
+
+## Runtime contract (not just compile-time)
+
+JSON Schema is a **cross-check**, not always the primary generator input. Unit tests
+should validate fixtures/examples against Draft 2020-12 at runtime (valid must pass,
+invalid must fail) and compare schema keys to `.cli-flags.toml` env names or
+route-map keys when those exist.
+

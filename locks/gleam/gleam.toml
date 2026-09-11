@@ -1,0 +1,14 @@
+name = "cliptown_locks"
+version = "0.1.0"
+description = "cliptown lock routines: ores_locks_and_leases with the cliptown key prefix and lock catalog."
+licences = ["MIT"]
+target = "erlang"
+
+gleam = ">= 1.6.0"
+
+[dependencies]
+gleam_stdlib = ">= 0.44.0 and < 2.0.0"
+ores_locks_and_leases = { path = "../.vendor/.zed/oresoftware/ores-locks-and-leases/src/gleam" }
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"

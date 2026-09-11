@@ -1,0 +1,44 @@
+[package]
+org = "cliptown"
+name = "cliptown-locks"
+version = "0.1.0"
+description = "cliptown lock routines: ORESoftware/ores-locks-and-leases (fiducia lease around a Postgres advisory lock) wrapped with the cliptown key prefix and lock catalog"
+license = "MIT"
+keywords = ["lock", "lease", "postgres", "fiducia", "polyglot"]
+
+[package.repository]
+vcs = "git"
+url = "https://github.com/cliptown/cliptown-lib-core"
+
+# The shared routines, and the org's interfaces so catalog entries can
+# reference shared types (tenant ids, job names) instead of bare strings.
+[dependencies]
+"oresoftware/ores-locks-and-leases" = "=0.1.1"
+"cliptown/cliptown-interfaces" = "^0.1.0"
+"oresoftware/ores-contracts" = "^0.1.0"
+
+[install]
+dir = ".vendor/.zed"
+
+[targets.rust]
+dir = "rust"
+adapter = "rust"
+
+[targets.typescript]
+dir = "typescript"
+adapter = "node"
+
+[targets.dart]
+dir = "dart"
+adapter = "dart"
+
+[targets.gleam]
+dir = "gleam"
+adapter = "none"
+
+[targets.golang]
+dir = "golang"
+adapter = "none"
+
+[scripts]
+test = "npx --yes --package=https://github.com/ORESoftware/ores-contracts/archive/f79ea8d8d94d7a9e78c15f7e46ecae8e4b584d2e.tar.gz ores-contracts check --config contracts/contracts.config.json"
