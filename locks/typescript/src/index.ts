@@ -30,8 +30,11 @@ export interface Entry {
 
 /** The key for `entry` with `{placeholders}` filled from `fill`, in order of appearance. */
 export function entryKey(entry: Entry, ...fill: string[]): LockKey {
-  let i = 0;
-  return key(entry.domain, entry.name.replace(/\{[^}]*\}/g, () => fill[i++] ?? ""));
+  const parts = entry.name.split(/\{[^}]*\}/g);
+  const filled = parts
+    .map((part, index) => index < parts.length - 1 ? `${part}${fill[index] ?? ""}` : part)
+    .join("");
+  return key(entry.domain, filled);
 }
 
 /** The plan an entry's defaults produce. */
