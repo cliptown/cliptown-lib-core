@@ -189,42 +189,55 @@ mod tests {
 
     fn signal(dimensions: usize) -> Vec<f32> {
         let mut values = vec![0.0; dimensions];
-        values[0] = 1.0;
+        if let Some(first) = values.first_mut() {
+            *first = 1.0;
+        }
         values
     }
 
     #[test]
     fn pads_openai_1536_output_with_trailing_zeros() {
-        let embedding = PaddedEmbedding::from_model_output(
+        let result = PaddedEmbedding::from_model_output(
             EmbeddingProvider::OpenAi,
             "text-embedding-3-small",
             signal(1536),
-        )
-        .expect("valid OpenAI output");
+        );
+        assert!(result.is_ok(), "valid OpenAI output must be accepted");
+        let Ok(embedding) = result else {
+            return;
+        };
         assert_eq!(embedding.values().len(), 4100);
-        assert!(embedding.values()[1536..]
-            .iter()
-            .all(|value| value.abs() <= f32::EPSILON));
+        assert!(embedding
+            .values()
+            .get(1536..)
+            .is_some_and(|tail| tail.iter().all(|value| value.abs() <= f32::EPSILON)));
     }
 
     #[test]
     fn pads_4096_output_with_exactly_four_zeros() {
-        let embedding = PaddedEmbedding::from_model_output(
+        let result = PaddedEmbedding::from_model_output(
             EmbeddingProvider::Qwen,
             "Qwen/Qwen3-Embedding-8B",
             signal(4096),
-        )
-        .expect("valid Qwen output");
+        );
+        assert!(result.is_ok(), "valid Qwen output must be accepted");
+        let Ok(embedding) = result else {
+            return;
+        };
         assert_eq!(embedding.values().len(), 4100);
-        assert!(embedding.values()[4096..]
-            .iter()
-            .all(|value| value.abs() <= f32::EPSILON));
+        assert!(embedding
+            .values()
+            .get(4096..)
+            .is_some_and(|tail| tail.iter().all(|value| value.abs() <= f32::EPSILON)));
     }
 
     #[test]
     fn models_openai_large_default_as_3072_and_allows_shortening() {
-        let profile = model_dimensions(EmbeddingProvider::OpenAi, "text-embedding-3-large")
-            .expect("known model");
+        let profile = model_dimensions(EmbeddingProvider::OpenAi, "text-embedding-3-large");
+        assert!(profile.is_some(), "OpenAI large model must remain registered");
+        let Some(profile) = profile else {
+            return;
+        };
         assert_eq!(profile.default, 3072);
         assert!(PaddedEmbedding::from_model_output(
             EmbeddingProvider::OpenAi,
