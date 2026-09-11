@@ -35,6 +35,22 @@ pub fn key(domain: Domain, name: &str) -> Result<LockKey, key::InvalidLockKey> {
     LockKey::new(format!("{ORG}/{}/{name}", domain.as_str()))
 }
 
+fn fill_placeholders(template: &str, fill: &[&str]) -> String {
+    let Some(open) = template.find('{') else {
+        return template.to_owned();
+    };
+    let after = &template[open..];
+    let close = after.find('}').map_or(after.len(), |index| index + 1);
+    let replacement = fill.first().copied().unwrap_or("");
+    let remaining = fill.get(1..).unwrap_or(&[]);
+    format!(
+        "{}{}{}",
+        &template[..open],
+        replacement,
+        fill_placeholders(&after[close..], remaining)
+    )
+}
+
 /// One catalog row: the defaults a call site should use for a named lock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entry {
@@ -50,18 +66,7 @@ impl Entry {
     /// The key for this entry with `{placeholders}` filled from `fill`, in
     /// order of appearance.
     pub fn key(&self, fill: &[&str]) -> Result<LockKey, key::InvalidLockKey> {
-        let mut name = String::new();
-        let mut rest = self.name;
-        let mut fills = fill.iter();
-        while let Some(open) = rest.find('{') {
-            name.push_str(&rest[..open]);
-            let after = &rest[open..];
-            let close = after.find('}').map(|i| i + 1).unwrap_or(after.len());
-            name.push_str(fills.next().copied().unwrap_or(""));
-            rest = &after[close..];
-        }
-        name.push_str(rest);
-        key(self.domain, &name)
+        key(self.domain, &fill_placeholders(self.name, fill))
     }
 
     /// The plan this entry's defaults produce.
@@ -78,7 +83,10 @@ pub mod catalog {
     pub const MIGRATIONS_APPLY: Entry = Entry {
         domain: Domain::Migrations,
         name: "apply",
-        layers: LockLayers { fiducia: true, pg_advisory: true },
+        layers: LockLayers {
+            fiducia: true,
+            pg_advisory: true,
+        },
         pg_scope: PgScope::Session,
         wait: false,
     };
@@ -86,7 +94,10 @@ pub mod catalog {
     pub const JOBS_SINGLETON_JOB: Entry = Entry {
         domain: Domain::Jobs,
         name: "singleton:{job}",
-        layers: LockLayers { fiducia: true, pg_advisory: true },
+        layers: LockLayers {
+            fiducia: true,
+            pg_advisory: true,
+        },
         pg_scope: PgScope::Transaction,
         wait: false,
     };
@@ -94,7 +105,10 @@ pub mod catalog {
     pub const OUTBOX_DRAIN: Entry = Entry {
         domain: Domain::Outbox,
         name: "drain",
-        layers: LockLayers { fiducia: false, pg_advisory: true },
+        layers: LockLayers {
+            fiducia: false,
+            pg_advisory: true,
+        },
         pg_scope: PgScope::Transaction,
         wait: false,
     };
@@ -102,7 +116,10 @@ pub mod catalog {
     pub const TENANT_TENANT_ID_MUTATE: Entry = Entry {
         domain: Domain::Tenant,
         name: "{tenant_id}/mutate",
-        layers: LockLayers { fiducia: true, pg_advisory: true },
+        layers: LockLayers {
+            fiducia: true,
+            pg_advisory: true,
+        },
         pg_scope: PgScope::Transaction,
         wait: true,
     };
@@ -114,8 +131,12 @@ mod tests {
 
     #[test]
     fn keys_carry_the_org_prefix() {
-        let k = key(Domain::Jobs, "x").unwrap();
-        assert!(k.as_str().starts_with("cliptown/jobs/"));
+        let result = key(Domain::Jobs, "x");
+        assert!(result.is_ok(), "valid generated lock key must be admitted");
+        let Ok(lock_key) = result else {
+            return;
+        };
+        assert!(lock_key.as_str().starts_with("cliptown/jobs/"));
     }
 
     #[test]
@@ -127,7 +148,12 @@ mod tests {
             pg_scope: PgScope::Transaction,
             wait: true,
         };
-        assert_eq!(entry.key(&["1", "2"]).unwrap().as_str(), "cliptown/jobs/1/x/2");
+        let result = entry.key(&["1", "2"]);
+        assert!(result.is_ok(), "valid placeholders must produce a lock key");
+        let Ok(lock_key) = result else {
+            return;
+        };
+        assert_eq!(lock_key.as_str(), "cliptown/jobs/1/x/2");
         assert_eq!(entry.plan().steps.first(), Some(&LockStep::FiduciaAcquire));
     }
 }
