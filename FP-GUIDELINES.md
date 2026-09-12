@@ -94,3 +94,10 @@ in this tree:
 Those steps are deliberately **not** in the CI job. A toolchain install costs far
 more Actions minutes than the Python pass, and we are budget-conscious about
 runner time. Run them locally, and in the nightly job on the sibling `-test` org.
+
+### `RS004` — wildcard match arm defeats exhaustiveness
+
+*illegal states excluded by types* · 2 occurrences at baseline
+
+Enumerate the remaining variants explicitly so adding a variant becomes a compile error.
+
