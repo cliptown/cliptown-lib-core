@@ -1,0 +1,21 @@
+{
+  "githubOrg": "cliptown",
+  "libCore": "cliptown/cliptown-lib-core",
+  "interfaces": "cliptown/cliptown-interfaces",
+  "prefix": "cliptown",
+  "pgSchema": "cliptown",
+  "tenantColumn": "account_id",
+  "table": "clip_embeddings",
+  "purpose": "Semantic recall over clipboard history: find the thing you copied three weeks ago from a description of it rather than its exact text.",
+  "entityKinds": [
+    "clip",
+    "clip_group",
+    "source_app_context",
+    "ocr_text",
+    "link_preview"
+  ],
+  "correlationEnabled": true,
+  "alertsEnabled": false,
+  "dedupeEnabled": true,
+  "linearTeam": "DEN"
+}

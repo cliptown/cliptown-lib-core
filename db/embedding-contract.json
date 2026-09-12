@@ -1,0 +1,113 @@
+{
+  "$schema": "./embedding-contract.schema.json",
+  "contract": "ores-embedding-contract",
+  "contractVersion": "2026.08.29",
+  "description": "Fleet-wide embedding storage and retrieval contract. Vendored byte-identical into every org's *-orm-core / *-lib-core repository. The SQL, the migrations and the generated ORM for each org are produced from THIS file plus that org's org-manifest.json, and they live in that org's own GitHub org - not in ORESoftware/k8s-libs-and-shared-defs. Changing this file changes every org, so it is versioned and checksummed; scripts/embeddings/generate.mjs --check fails CI when a vendored copy drifts.",
+
+  "storage": {
+    "canonicalDimensions": 4100,
+    "canonicalDimensionsRationale": "4100 is a fixed superset width chosen so that every model we use today fits without a schema change, including the 4096-dimension open-weight retrieval models (Qwen3-Embedding-8B, NVIDIA NV-Embed-v2, BAAI bge-en-icl, intfloat/e5-mistral-7b-instruct) with four spare slots of headroom. Shorter models are stored left-aligned and zero-padded on the right.",
+    "padding": "zero-tail",
+    "paddingRationale": "A right zero-pad leaves the L2 norm, the cosine similarity and the inner product of the vector unchanged, so a 1536-dimension OpenAI embedding padded to 4100 ranks identically to the same embedding stored at its native width. Padding is therefore lossless for retrieval and costs only storage.",
+    "normalization": "l2-unit",
+    "normalizationRationale": "Every stored vector MUST be L2-normalized to unit length before insert. Unit norm makes cosine distance, negative inner product and L2 distance rank-equivalent (for unit vectors ||a-b||^2 = 2 - 2*cos(a,b)), which is what lets the same rows serve a pgvector cosine HNSW index on Postgres and an L2-only C-SPANN vector index on CockroachDB without storing the data twice.",
+    "normTolerance": 0.001,
+    "toastStorage": "EXTERNAL",
+    "toastRationale": "vector(4100) is 4*4100+8 = 16408 bytes, which exceeds the ~8160-byte in-page tuple budget, so the column is always stored out of line. float32 payloads do not compress, so EXTERNAL (out of line, uncompressed) avoids paying pglz CPU on every write and every detoast for nothing.",
+    "crossModelComparisonIsForbidden": true,
+    "crossModelComparisonNote": "Vectors from different models occupy different spaces. A query MUST filter on (provider, model_name, model_version) - or on model_key, which denormalizes the three - before any distance operator is applied. Every generated query and every generated index carries that predicate. Padding does not make an OpenAI vector comparable to a Gemini vector; it only makes them the same width."
+  },
+
+  "requires": {
+    "pgvector": ">=0.7.0",
+    "pgvectorRationale": "halfvec, binary_quantize(), subvector(), l2_norm(), l2_normalize() and the bit_hamming_ops / halfvec_cosine_ops operator classes all arrived in pgvector 0.7.0. On 0.6.x this schema does not merely perform worse - it fails to create, because the types and the operator classes do not exist. Check with: SELECT extversion FROM pg_extension WHERE extname = 'vector'.",
+    "postgres": ">=14",
+    "postgresRationale": "STORED generated columns are PostgreSQL 12+; gen_random_uuid() is core from 13. 14 is the floor we actually deploy.",
+    "cockroachdb": ">=25.2",
+    "cockroachdbRationale": "The VECTOR type and the C-SPANN vector index; the index additionally needs SET CLUSTER SETTING feature.vector_index.enabled = true.",
+    "pgcrypto": "required only by the widening migration, for digest() when backfilling content_sha256"
+  },
+
+  "ann": {
+    "problem": "pgvector can STORE up to 16000 dimensions but can only INDEX 2000 dimensions with the vector type and 4000 with halfvec. A vector(4100) column therefore cannot carry an HNSW or IVFFlat index directly, at any operator class. Any design that declares vector(4100) and then writes CREATE INDEX ... USING hnsw (embedding vector_cosine_ops) does not work; it fails at index creation time.",
+    "strategy": "binary-quantize-candidates-then-exact-rerank",
+    "strategyNote": "Two stages. Stage 1 generates candidates from a derived surface that IS indexable at 4100 dimensions. Stage 2 reranks those candidates with the exact distance operator against the full-width vector. Stage 2 touches only the candidate rows, which is what keeps the TOAST reads bounded.",
+    "surfaces": [
+      {
+        "name": "embedding_bits",
+        "type": "bit(4100)",
+        "derivation": "binary_quantize(embedding)::bit(4100)",
+        "generated": "stored",
+        "index": "hnsw (embedding_bits bit_hamming_ops)",
+        "indexLimit": 64000,
+        "appliesTo": "all models",
+        "note": "Hamming distance over the sign bits is a valid coarse proxy for cosine distance on any unit-norm embedding, regardless of whether the model is Matryoshka-trained. The zero pad quantizes to a constant run of 0 bits, which adds the same constant to every pairwise Hamming distance inside a model group and therefore does not change the ranking. This is the universal candidate surface."
+      },
+      {
+        "name": "embedding_prefix",
+        "type": "halfvec(1024)",
+        "derivation": "subvector(embedding, 1, 1024)::halfvec(1024)",
+        "generated": "stored",
+        "index": "hnsw (embedding_prefix halfvec_cosine_ops) WHERE mrl_prefix_valid",
+        "indexLimit": 4000,
+        "appliesTo": "models where mrl = true",
+        "note": "Matryoshka-trained models concentrate information in the leading dimensions, so the first 1024 components are a genuine low-dimensional approximation of the full vector. This is NOT true for a non-Matryoshka model, where a prefix is an arbitrary coordinate subset and carries no such guarantee. The index is therefore partial, predicated on the mrl_prefix_valid column that the writer copies from this registry. Recall on this surface is materially better than on the bit surface, which is why both exist."
+      }
+    ],
+    "rerank": "embedding <=> $query  (exact cosine, full 4100 width, candidate rows only)",
+    "defaultCandidateCount": 400,
+    "defaultResultCount": 20
+  },
+
+  "fulltext": {
+    "enabled": true,
+    "column": "search_document",
+    "type": "tsvector",
+    "generated": "stored",
+    "regconfig": "simple",
+    "regconfigRationale": "'simple' is used rather than 'english' because these corpora are multilingual and because a stemmer baked into a STORED generated column cannot be changed later without a full table rewrite. Language-specific ranking is applied at query time instead.",
+    "weights": [
+      { "label": "A", "source": "title_text", "note": "titles, names, human tags - highest lexical weight" },
+      { "label": "B", "source": "summary_text", "note": "human descriptions, captions, abstracts" },
+      { "label": "D", "source": "body_text", "note": "full body, transcript or OCR text" }
+    ],
+    "index": "gin (search_document)",
+    "fusion": "reciprocal-rank",
+    "fusionK": 60,
+    "fusionRationale": "Reciprocal rank fusion combines the lexical ranking and the vector ranking without needing the two scores to be on a comparable scale, which ts_rank_cd and cosine distance are not. k=60 is the standard constant from the original RRF paper and is deliberately not tuned per org."
+  },
+
+  "models": [
+    { "key": "openai:text-embedding-3-large:1",        "provider": "openai",    "modelName": "text-embedding-3-large",        "modelVersion": "1", "nativeDims": 3072, "mrl": true,  "normalizedByProvider": true,  "family": "openai-v3",   "notes": "Matryoshka; can be requested shortened via the dimensions parameter. Store whatever width was requested in native_dims and zero-pad the rest." },
+    { "key": "openai:text-embedding-3-small:1",        "provider": "openai",    "modelName": "text-embedding-3-small",        "modelVersion": "1", "nativeDims": 1536, "mrl": true,  "normalizedByProvider": true,  "family": "openai-v3",   "notes": "1536 max/default; shortenable. The common case: 1536 real components followed by 2564 zeros." },
+    { "key": "openai:text-embedding-ada-002:2",        "provider": "openai",    "modelName": "text-embedding-ada-002",        "modelVersion": "2", "nativeDims": 1536, "mrl": false, "normalizedByProvider": true,  "family": "openai-ada",  "notes": "Older model, superseded by text-embedding-3-*. NOT Matryoshka - excluded from the prefix index." },
+
+    { "key": "voyage:voyage-3-large:1",                "provider": "voyage",    "modelName": "voyage-3-large",                "modelVersion": "1", "nativeDims": 1024, "mrl": true,  "normalizedByProvider": true,  "family": "voyage-3",    "notes": "Anthropic does not publish a first-party embedding model; Voyage AI is the embedding provider Anthropic points customers at, so 'Anthropic embeddings' in our code means this family. output_dimension is one of 2048, 1024 (default), 512, 256." },
+    { "key": "voyage:voyage-3.5:1",                    "provider": "voyage",    "modelName": "voyage-3.5",                    "modelVersion": "1", "nativeDims": 1024, "mrl": true,  "normalizedByProvider": true,  "family": "voyage-3",    "notes": "Same Matryoshka ladder as voyage-3-large." },
+    { "key": "voyage:voyage-3.5-lite:1",               "provider": "voyage",    "modelName": "voyage-3.5-lite",               "modelVersion": "1", "nativeDims": 1024, "mrl": true,  "normalizedByProvider": true,  "family": "voyage-3",    "notes": "Cheaper tier for high-volume de-duplication passes." },
+    { "key": "voyage:voyage-code-3:1",                 "provider": "voyage",    "modelName": "voyage-code-3",                 "modelVersion": "1", "nativeDims": 1024, "mrl": true,  "normalizedByProvider": true,  "family": "voyage-3",    "notes": "Code-specialized; used by the repo/diff correlation paths." },
+
+    { "key": "google:gemini-embedding-001:1",          "provider": "google",    "modelName": "gemini-embedding-001",          "modelVersion": "1", "nativeDims": 3072, "mrl": true,  "normalizedByProvider": false, "family": "gemini",      "notes": "Matryoshka: 3072 (default), 1536 and 768 are the documented output_dimensionality values. Google returns unnormalized vectors at reduced dimensionality, so the writer MUST L2-normalize before insert - the unit-norm CHECK will reject the row otherwise." },
+    { "key": "google:text-embedding-004:1",            "provider": "google",    "modelName": "text-embedding-004",            "modelVersion": "1", "nativeDims": 768,  "mrl": false, "normalizedByProvider": true,  "family": "gemini",      "notes": "Older Vertex text embedding model." },
+    { "key": "google:text-multilingual-embedding-002:1","provider": "google",   "modelName": "text-multilingual-embedding-002","modelVersion": "1","nativeDims": 768,  "mrl": false, "normalizedByProvider": true,  "family": "gemini",      "notes": "Multilingual sibling of text-embedding-004." },
+
+    { "key": "qwen:Qwen3-Embedding-8B:1",              "provider": "qwen",      "modelName": "Qwen3-Embedding-8B",            "modelVersion": "1", "nativeDims": 4096, "mrl": true,  "normalizedByProvider": false, "family": "qwen3",       "notes": "The model that sets the 4096 floor for this contract. MRL / variable output. Self-hosted, so normalization is our responsibility." },
+    { "key": "qwen:Qwen3-Embedding-4B:1",              "provider": "qwen",      "modelName": "Qwen3-Embedding-4B",            "modelVersion": "1", "nativeDims": 2560, "mrl": true,  "normalizedByProvider": false, "family": "qwen3",       "notes": "Mid tier of the same family." },
+    { "key": "qwen:Qwen3-Embedding-0.6B:1",            "provider": "qwen",      "modelName": "Qwen3-Embedding-0.6B",          "modelVersion": "1", "nativeDims": 1024, "mrl": true,  "normalizedByProvider": false, "family": "qwen3",       "notes": "Small tier; good default for high-volume near-duplicate detection." },
+
+    { "key": "nvidia:NV-Embed-v2:1",                   "provider": "nvidia",    "modelName": "NV-Embed-v2",                   "modelVersion": "1", "nativeDims": 4096, "mrl": false, "normalizedByProvider": false, "family": "nv-embed",    "notes": "Dedicated retrieval embedding model at 4096. NOT Matryoshka - truncating it is meaningless, so it is excluded from the prefix index and relies on the bit surface for candidate generation." },
+    { "key": "baai:bge-en-icl:1",                      "provider": "baai",      "modelName": "bge-en-icl",                    "modelVersion": "1", "nativeDims": 4096, "mrl": false, "normalizedByProvider": false, "family": "bge",         "notes": "Mistral-based embedding model at 4096. In-context-learning retrieval model; not Matryoshka." },
+    { "key": "baai:bge-m3:1",                          "provider": "baai",      "modelName": "bge-m3",                        "modelVersion": "1", "nativeDims": 1024, "mrl": false, "normalizedByProvider": true,  "family": "bge",         "notes": "Multilingual, multi-granularity; used where language coverage matters more than headroom." },
+    { "key": "intfloat:e5-mistral-7b-instruct:1",      "provider": "intfloat",  "modelName": "e5-mistral-7b-instruct",        "modelVersion": "1", "nativeDims": 4096, "mrl": false, "normalizedByProvider": false, "family": "e5",          "notes": "Another 4096-wide Mistral-derived retrieval model; registered so the width is already covered." }
+  ],
+
+  "invariants": [
+    "native_dims BETWEEN 1 AND 4100",
+    "vector_dims(embedding) = 4100 for every row",
+    "every component at index > native_dims is exactly zero",
+    "abs(l2_norm(embedding) - 1) <= normTolerance",
+    "mrl_prefix_valid is true only for models whose registry entry has mrl = true AND whose native_dims >= 1024",
+    "no distance operator is ever evaluated across two different model_key values",
+    "(tenant, entity_kind, entity_id, model_key) is unique - one row per entity per model"
+  ]
+}
