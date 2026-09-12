@@ -10,7 +10,10 @@
     "generate:check": "node tools/schema-orm-codegen.mjs --check",
     "test": "node --test tests/*.test.mjs",
     "lint:ores": "if [ -f .ores-lint/lint.sh ]; then sh .ores-lint/lint.sh; else echo 'ores-lint not installed'; fi",
-    "prepublishOnly": "npm run lint:ores"
+    "prepublishOnly": "npm run lint:ores",
+    "embeddings:generate": "node scripts/embeddings/generate.mjs",
+    "embeddings:check": "node scripts/embeddings/generate.mjs --check",
+    "embeddings:test": "node --test tests/embeddings-contract.test.mjs"
   },
   "oresLint": {
     "note": "Declared, not installed. ores-lint resolves these from a global install - see .ores-lint/README.md",
