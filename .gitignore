@@ -4,3 +4,9 @@
 !.env.example
 *.swp
 .DS_Store
+# DEN-3956: ignore agent scratch worktrees and temp dirs (fleet policy)
+tmp/
+temp/
+.tmp/
+tmp/worktrees/
+**/tmp/worktrees/
