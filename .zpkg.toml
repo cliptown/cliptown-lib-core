@@ -12,6 +12,7 @@ url = "https://github.com/cliptown/cliptown-lib-core"
 
 [dependencies]
 "oresoftware/ores-locks-and-leases" = "=0.1.1"
+"oresoftware/next-loggers" = "^0.1.0"
 "cliptown/cliptown-interfaces" = "^0.1.0"
 
 [install]
