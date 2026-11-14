@@ -25,8 +25,20 @@ fn valid_mime_token(token: &str) -> bool {
             byte.is_ascii_alphanumeric()
                 || matches!(
                     byte,
-                    b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+'
-                        | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
+                    b'!' | b'#'
+                        | b'$'
+                        | b'%'
+                        | b'&'
+                        | b'\''
+                        | b'*'
+                        | b'+'
+                        | b'-'
+                        | b'.'
+                        | b'^'
+                        | b'_'
+                        | b'`'
+                        | b'|'
+                        | b'~'
                 )
         })
 }
@@ -109,15 +121,28 @@ mod tests {
 
     #[test]
     fn media_types_require_two_exact_tokens_without_params() {
-        for valid in ["text/plain", "application/vnd.cliptown+json", "image/svg+xml"] {
+        for valid in [
+            "text/plain",
+            "application/vnd.cliptown+json",
+            "image/svg+xml",
+        ] {
             assert_eq!(validate_mime_type(valid), Ok(()));
         }
         for invalid in [
-            "", "/plain", "text/", "text/plain;charset=utf-8",
-            "text/plain?auth=secret", "text/plain/extra",
-            "text/pla in", "text/<script>", "text\\plain",
+            "",
+            "/plain",
+            "text/",
+            "text/plain;charset=utf-8",
+            "text/plain?auth=secret",
+            "text/plain/extra",
+            "text/pla in",
+            "text/<script>",
+            "text\\plain",
         ] {
-            assert_eq!(validate_mime_type(invalid), Err(CoreError::InvalidCiphertext));
+            assert_eq!(
+                validate_mime_type(invalid),
+                Err(CoreError::InvalidCiphertext)
+            );
         }
     }
 
