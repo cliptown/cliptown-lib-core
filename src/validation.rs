@@ -17,17 +17,25 @@ pub(crate) fn validate_portable_identifier(value: &str) -> Result<(), CoreError>
     Ok(())
 }
 
+/// Enforces the RFC token alphabet; media type parameters are intentionally
+/// excluded from immutable ciphertext metadata.
+fn valid_mime_token(token: &str) -> bool {
+    !token.is_empty()
+        && token.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+'
+                        | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
+                )
+        })
+}
+
 pub(crate) fn validate_mime_type(value: &str) -> Result<(), CoreError> {
-    let slash_count = value.bytes().filter(|byte| *byte == b'/').count();
-    if value.is_empty()
-        || value.len() > 127
-        || slash_count != 1
-        || value.starts_with('/')
-        || value.ends_with('/')
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_graphic() && !matches!(byte, b'"' | b'\\'))
-    {
+    let Some((top_level, subtype)) = value.split_once('/') else {
+        return Err(CoreError::InvalidCiphertext);
+    };
+    if value.len() > 127 || !valid_mime_token(top_level) || !valid_mime_token(subtype) {
         return Err(CoreError::InvalidCiphertext);
     }
     Ok(())
@@ -97,6 +105,20 @@ mod tests {
             validate_portable_identifier("tenant/user"),
             Err(CoreError::InvalidIdentifier)
         );
+    }
+
+    #[test]
+    fn media_types_require_two_exact_tokens_without_params() {
+        for valid in ["text/plain", "application/vnd.cliptown+json", "image/svg+xml"] {
+            assert_eq!(validate_mime_type(valid), Ok(()));
+        }
+        for invalid in [
+            "", "/plain", "text/", "text/plain;charset=utf-8",
+            "text/plain?auth=secret", "text/plain/extra",
+            "text/pla in", "text/<script>", "text\\plain",
+        ] {
+            assert_eq!(validate_mime_type(invalid), Err(CoreError::InvalidCiphertext));
+        }
     }
 
     #[test]
