@@ -129,12 +129,16 @@ mod tests {
     fn newest_two_thousand_only() {
         let payload = [3_u8];
         let ids = (0..2_001).map(|i| format!("clip_{i}")).collect::<Vec<_>>();
-        let rows = ids.iter().enumerate().map(|(index, id)| BorrowedTextEnvelope {
-            envelope_id: id,
-            server_sequence: (index + 1) as u64,
-            kind: "text",
-            ciphertext: &payload,
-        }).collect::<Vec<_>>();
+        let rows = ids
+            .iter()
+            .enumerate()
+            .map(|(index, id)| BorrowedTextEnvelope {
+                envelope_id: id,
+                server_sequence: (index + 1) as u64,
+                kind: "text",
+                ciphertext: &payload,
+            })
+            .collect::<Vec<_>>();
         let result = plan_text_cache(&rows);
         assert!(matches!(
             result,
@@ -149,9 +153,24 @@ mod tests {
         let small = [1_u8];
         let medium = [1_u8; 1_024];
         let rows = [
-            BorrowedTextEnvelope { envelope_id: "old", server_sequence: 1, kind: "text", ciphertext: &small },
-            BorrowedTextEnvelope { envelope_id: "new", server_sequence: 3, kind: "text", ciphertext: &large },
-            BorrowedTextEnvelope { envelope_id: "middle", server_sequence: 2, kind: "text", ciphertext: &medium },
+            BorrowedTextEnvelope {
+                envelope_id: "old",
+                server_sequence: 1,
+                kind: "text",
+                ciphertext: &small,
+            },
+            BorrowedTextEnvelope {
+                envelope_id: "new",
+                server_sequence: 3,
+                kind: "text",
+                ciphertext: &large,
+            },
+            BorrowedTextEnvelope {
+                envelope_id: "middle",
+                server_sequence: 2,
+                kind: "text",
+                ciphertext: &medium,
+            },
         ];
         assert!(matches!(
             plan_text_cache(&rows),
@@ -163,13 +182,43 @@ mod tests {
     fn reject_nontext_duplicate_invalid_and_zero_length() {
         let payload = [1_u8];
         let valid = BorrowedTextEnvelope {
-            envelope_id: "clip_1", server_sequence: 1, kind: "text", ciphertext: &payload,
+            envelope_id: "clip_1",
+            server_sequence: 1,
+            kind: "text",
+            ciphertext: &payload,
         };
-        assert_eq!(plan_text_cache(&[valid, valid]), Err(CoreError::InvalidCloudCache));
-        assert_eq!(plan_text_cache(&[BorrowedTextEnvelope {kind: "file", ..valid}]), Err(CoreError::InvalidCloudCache));
-        assert_eq!(plan_text_cache(&[BorrowedTextEnvelope {envelope_id: "a/b", ..valid}]), Err(CoreError::InvalidCloudCache));
-        assert_eq!(plan_text_cache(&[BorrowedTextEnvelope {server_sequence: 0, ..valid}]), Err(CoreError::InvalidCloudCache));
-        assert_eq!(plan_text_cache(&[BorrowedTextEnvelope {ciphertext: &[], ..valid}]), Err(CoreError::InvalidCiphertext));
+        assert_eq!(
+            plan_text_cache(&[valid, valid]),
+            Err(CoreError::InvalidCloudCache)
+        );
+        assert_eq!(
+            plan_text_cache(&[BorrowedTextEnvelope {
+                kind: "file",
+                ..valid
+            }]),
+            Err(CoreError::InvalidCloudCache)
+        );
+        assert_eq!(
+            plan_text_cache(&[BorrowedTextEnvelope {
+                envelope_id: "a/b",
+                ..valid
+            }]),
+            Err(CoreError::InvalidCloudCache)
+        );
+        assert_eq!(
+            plan_text_cache(&[BorrowedTextEnvelope {
+                server_sequence: 0,
+                ..valid
+            }]),
+            Err(CoreError::InvalidCloudCache)
+        );
+        assert_eq!(
+            plan_text_cache(&[BorrowedTextEnvelope {
+                ciphertext: &[],
+                ..valid
+            }]),
+            Err(CoreError::InvalidCiphertext)
+        );
     }
 
     #[test]
