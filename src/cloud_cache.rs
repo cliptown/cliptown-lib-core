@@ -11,6 +11,28 @@ pub const MAX_CLOUD_TEXT_ITEMS: usize = 2_000;
 pub const MAX_CLOUD_LOGICAL_BYTES: usize = 5 * 1024 * 1024;
 pub const PER_CLOUD_ITEM_RESERVE_BYTES: usize = 512;
 
+pub const MAX_CLOUD_DEVICE_SEQUENCE: i64 = 9_007_199_254_740_990;
+
+/// Pure preflight for signed, monotonically increasing device mutation IDs.
+/// D1 additionally enforces this atomically using a durable per-device trigger.
+/// This preflight is not a cryptographic signature verification or replay store.
+pub fn checked_device_sequence(
+    incoming: i64,
+    previous: Option<i64>,
+) -> Result<i64, CoreError> {
+    if !(1..=MAX_CLOUD_DEVICE_SEQUENCE).contains(&incoming)
+        || previous.is_some_and(|value| {
+            !(1..=MAX_CLOUD_DEVICE_SEQUENCE).contains(&value)
+        })
+    {
+        return Err(CoreError::InvalidDeviceSequence);
+    }
+    if previous.is_some_and(|value| incoming <= value) {
+        return Err(CoreError::DeviceSequenceReplay);
+    }
+    Ok(incoming)
+}
+
 /// Immutable view: while a Rust caller retains this borrowed ciphertext slice
 /// it cannot mutably borrow the original buffer. No copies are required.
 ///
@@ -268,6 +290,44 @@ mod tests {
         assert_eq!(
             measured_text_charge(&huge),
             Err(CoreError::SizeLimitExceeded)
+        );
+    }
+}
+
+#[cfg(test)]
+mod replay_guard_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_repeated_and_regressing_signed_sequence() {
+        assert_eq!(checked_device_sequence(1, None), Ok(1));
+        assert_eq!(checked_device_sequence(2, Some(1)), Ok(2));
+        assert_eq!(
+            checked_device_sequence(1, Some(1)),
+            Err(CoreError::DeviceSequenceReplay)
+        );
+        assert_eq!(
+            checked_device_sequence(1, Some(2)),
+            Err(CoreError::DeviceSequenceReplay)
+        );
+    }
+
+    #[test]
+    fn invalid_input_cannot_overflow_cross_runtime_integer_bounds() {
+        for value in [0_i64, -1, MAX_CLOUD_DEVICE_SEQUENCE + 1] {
+            assert_eq!(
+                checked_device_sequence(value, None),
+                Err(CoreError::InvalidDeviceSequence)
+            );
+        }
+        assert_eq!(
+            checked_device_sequence(1, Some(-1)),
+            Err(CoreError::InvalidDeviceSequence)
+        );
+        assert_eq!(
+            checked_device_sequence(MAX_CLOUD_DEVICE_SEQUENCE,
+                Some(MAX_CLOUD_DEVICE_SEQUENCE - 1)),
+            Ok(MAX_CLOUD_DEVICE_SEQUENCE)
         );
     }
 }
