@@ -9,6 +9,7 @@
 
 pub mod auth;
 pub mod clip;
+pub mod cloud_cache;
 pub mod encrypted_objects;
 pub mod error;
 pub mod sync;
@@ -19,6 +20,10 @@ pub use auth::{
     Operation, ResourceContext,
 };
 pub use clip::{CipherAlgorithm, EncryptedClip, OpaqueCiphertext};
+pub use cloud_cache::{
+    checked_device_sequence, measured_text_charge, plan_text_cache, BorrowedTextEnvelope,
+    CloudCacheRetention, MAX_CLOUD_DEVICE_SEQUENCE,
+};
 pub use encrypted_objects::{
     EncryptedObjectChunk, EncryptedObjectManifest, ObjectGrantPolicy, WrappedContentKey,
 };

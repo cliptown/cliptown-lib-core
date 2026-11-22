@@ -34,6 +34,9 @@ jobs:
       - name: Test
         run: cargo +1.88.0 test --locked --all-targets
 
+      - name: Borrow checker compile-fail doctests
+        run: cargo +1.88.0 test --locked --doc
+
       - name: Clippy
         run: cargo +1.88.0 clippy --locked --all-targets -- -D warnings
 
