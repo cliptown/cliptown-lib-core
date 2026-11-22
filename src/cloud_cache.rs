@@ -13,6 +13,23 @@ pub const PER_CLOUD_ITEM_RESERVE_BYTES: usize = 512;
 
 /// Immutable view: while a Rust caller retains this borrowed ciphertext slice
 /// it cannot mutably borrow the original buffer. No copies are required.
+///
+/// Compile-fail regression: mutating a buffer with a live borrowed cache plan
+/// must be rejected by the Rust compiler, not by a runtime convention.
+///
+/// ```compile_fail
+/// use cliptown_lib_core::cloud_cache::{plan_text_cache, BorrowedTextEnvelope};
+/// let mut ciphertext = vec![1_u8, 2, 3];
+/// let views = [BorrowedTextEnvelope {
+///     envelope_id: "clip_1",
+///     server_sequence: 1,
+///     kind: "text",
+///     ciphertext: &ciphertext,
+/// }];
+/// let plan = plan_text_cache(&views).expect("valid");
+/// ciphertext.clear(); // forbidden: mutable borrow while plan still alive
+/// assert_eq!(plan.retained_ids, vec!["clip_1"]);
+/// ```
 #[derive(Debug, Clone, Copy)]
 pub struct BorrowedTextEnvelope<'a> {
     pub envelope_id: &'a str,
