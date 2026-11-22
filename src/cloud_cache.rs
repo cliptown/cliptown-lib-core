@@ -16,14 +16,9 @@ pub const MAX_CLOUD_DEVICE_SEQUENCE: i64 = 9_007_199_254_740_990;
 /// Pure preflight for signed, monotonically increasing device mutation IDs.
 /// D1 additionally enforces this atomically using a durable per-device trigger.
 /// This preflight is not a cryptographic signature verification or replay store.
-pub fn checked_device_sequence(
-    incoming: i64,
-    previous: Option<i64>,
-) -> Result<i64, CoreError> {
+pub fn checked_device_sequence(incoming: i64, previous: Option<i64>) -> Result<i64, CoreError> {
     if !(1..=MAX_CLOUD_DEVICE_SEQUENCE).contains(&incoming)
-        || previous.is_some_and(|value| {
-            !(1..=MAX_CLOUD_DEVICE_SEQUENCE).contains(&value)
-        })
+        || previous.is_some_and(|value| !(1..=MAX_CLOUD_DEVICE_SEQUENCE).contains(&value))
     {
         return Err(CoreError::InvalidDeviceSequence);
     }
@@ -325,8 +320,10 @@ mod replay_guard_tests {
             Err(CoreError::InvalidDeviceSequence)
         );
         assert_eq!(
-            checked_device_sequence(MAX_CLOUD_DEVICE_SEQUENCE,
-                Some(MAX_CLOUD_DEVICE_SEQUENCE - 1)),
+            checked_device_sequence(
+                MAX_CLOUD_DEVICE_SEQUENCE,
+                Some(MAX_CLOUD_DEVICE_SEQUENCE - 1)
+            ),
             Ok(MAX_CLOUD_DEVICE_SEQUENCE)
         );
     }
