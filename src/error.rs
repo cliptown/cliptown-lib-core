@@ -28,6 +28,8 @@ pub enum CoreError {
     StaleStepUp,
     #[error("resource ownership does not match the authenticated subject")]
     OwnershipMismatch,
+    #[error("cloud text cache metadata is invalid")]
+    InvalidCloudCache,
     #[error("ciphertext envelope is invalid")]
     InvalidCiphertext,
     #[error("cipher algorithm is unsupported")]
@@ -74,6 +76,7 @@ impl CoreError {
             Self::InsufficientAssurance => "insufficient_assurance",
             Self::StaleStepUp => "stale_step_up",
             Self::OwnershipMismatch => "ownership_mismatch",
+            Self::InvalidCloudCache => "invalid_cloud_cache",
             Self::InvalidCiphertext => "invalid_ciphertext",
             Self::UnsupportedCipher => "unsupported_cipher",
             Self::InvalidManifest => "invalid_manifest",
