@@ -49,54 +49,87 @@ pub fn measured_text_charge(ciphertext: &[u8]) -> Result<usize, CoreError> {
 pub fn plan_text_cache<'a>(
     rows: &'a [BorrowedTextEnvelope<'a>],
 ) -> Result<CloudCacheRetention<'a>, CoreError> {
-    let mut ids = HashSet::with_capacity(rows.len());
-    let mut sorted = Vec::with_capacity(rows.len());
+    let (_, charged) = rows.iter().try_fold(
+        (
+            HashSet::with_capacity(rows.len()),
+            Vec::with_capacity(rows.len()),
+        ),
+        |(ids, charged), row| {
+            if row.kind != "text"
+                || row.envelope_id.is_empty()
+                || row.envelope_id.len() > 128
+                || !row
+                    .envelope_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+                || row.server_sequence == 0
+                || ids.contains(row.envelope_id)
+            {
+                return Err(CoreError::InvalidCloudCache);
+            }
+            let charge = measured_text_charge(row.ciphertext)?;
+            Ok((
+                insert_id(ids, row.envelope_id),
+                append_value(charged, (row, charge)),
+            ))
+        },
+    )?;
 
-    for row in rows {
-        if row.kind != "text"
-            || row.envelope_id.is_empty()
-            || row.envelope_id.len() > 128
-            || !row
-                .envelope_id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
-            || row.server_sequence == 0
-            || !ids.insert(row.envelope_id)
-        {
-            return Err(CoreError::InvalidCloudCache);
-        }
-        let charge = measured_text_charge(row.ciphertext)?;
-        sorted.push((row, charge));
-    }
-
-    sorted.sort_unstable_by(|(a, _), (b, _)| {
-        b.server_sequence
-            .cmp(&a.server_sequence)
-            .then_with(|| b.envelope_id.cmp(a.envelope_id))
-    });
-
-    let mut retained = Vec::new();
-    let mut evicted = Vec::new();
-    let mut cumulative = 0_usize;
-    let mut retained_bytes = 0_usize;
-
-    for (index, (row, charge)) in sorted.into_iter().enumerate() {
-        cumulative = cumulative
-            .checked_add(charge)
-            .ok_or(CoreError::SizeLimitExceeded)?;
-        if index < MAX_CLOUD_TEXT_ITEMS && cumulative <= MAX_CLOUD_LOGICAL_BYTES {
-            retained.push(row.envelope_id);
-            retained_bytes = cumulative;
-        } else {
-            evicted.push(row.envelope_id);
-        }
-    }
+    let sorted = sorted_charges(charged);
+    let (retained, evicted, _, retained_bytes) = sorted
+        .into_iter()
+        .enumerate()
+        .try_fold(
+            (Vec::new(), Vec::new(), 0_usize, 0_usize),
+            |(retained, evicted, cumulative, retained_bytes), (index, (row, charge))| {
+                let next = cumulative
+                    .checked_add(charge)
+                    .ok_or(CoreError::SizeLimitExceeded)?;
+                if index < MAX_CLOUD_TEXT_ITEMS && next <= MAX_CLOUD_LOGICAL_BYTES {
+                    Ok((
+                        append_value(retained, row.envelope_id),
+                        evicted,
+                        next,
+                        next,
+                    ))
+                } else {
+                    Ok((
+                        retained,
+                        append_value(evicted, row.envelope_id),
+                        next,
+                        retained_bytes,
+                    ))
+                }
+            },
+        )?;
 
     Ok(CloudCacheRetention {
         retained_ids: retained,
         evicted_ids: evicted,
         logical_bytes: retained_bytes,
     })
+
+}
+
+fn insert_id<'a>(mut ids: HashSet<&'a str>, id: &'a str) -> HashSet<&'a str> {
+    ids.insert(id);
+    ids
+}
+
+fn append_value<T>(mut values: Vec<T>, value: T) -> Vec<T> {
+    values.push(value);
+    values
+}
+
+fn sorted_charges<'a>(
+    mut rows: Vec<(&'a BorrowedTextEnvelope<'a>, usize)>,
+) -> Vec<(&'a BorrowedTextEnvelope<'a>, usize)> {
+    rows.sort_unstable_by(|(a, _), (b, _)| {
+        b.server_sequence
+            .cmp(&a.server_sequence)
+            .then_with(|| b.envelope_id.cmp(a.envelope_id))
+    });
+    rows
 }
 
 #[cfg(test)]
@@ -224,6 +257,9 @@ mod tests {
     #[test]
     fn oversize_rejected() {
         let huge = vec![2_u8; MAX_CLOUD_LOGICAL_BYTES];
-        assert_eq!(measured_text_charge(&huge), Err(CoreError::SizeLimitExceeded));
+        assert_eq!(
+            measured_text_charge(&huge),
+            Err(CoreError::SizeLimitExceeded)
+        );
     }
 }
