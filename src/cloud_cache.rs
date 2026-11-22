@@ -76,39 +76,30 @@ pub fn plan_text_cache<'a>(
     )?;
 
     let sorted = sorted_charges(charged);
-    let (retained, evicted, _, retained_bytes) = sorted
-        .into_iter()
-        .enumerate()
-        .try_fold(
-            (Vec::new(), Vec::new(), 0_usize, 0_usize),
-            |(retained, evicted, cumulative, retained_bytes), (index, (row, charge))| {
-                let next = cumulative
-                    .checked_add(charge)
-                    .ok_or(CoreError::SizeLimitExceeded)?;
-                if index < MAX_CLOUD_TEXT_ITEMS && next <= MAX_CLOUD_LOGICAL_BYTES {
-                    Ok((
-                        append_value(retained, row.envelope_id),
-                        evicted,
-                        next,
-                        next,
-                    ))
-                } else {
-                    Ok((
-                        retained,
-                        append_value(evicted, row.envelope_id),
-                        next,
-                        retained_bytes,
-                    ))
-                }
-            },
-        )?;
+    let (retained, evicted, _, retained_bytes) = sorted.into_iter().enumerate().try_fold(
+        (Vec::new(), Vec::new(), 0_usize, 0_usize),
+        |(retained, evicted, cumulative, retained_bytes), (index, (row, charge))| {
+            let next = cumulative
+                .checked_add(charge)
+                .ok_or(CoreError::SizeLimitExceeded)?;
+            if index < MAX_CLOUD_TEXT_ITEMS && next <= MAX_CLOUD_LOGICAL_BYTES {
+                Ok((append_value(retained, row.envelope_id), evicted, next, next))
+            } else {
+                Ok((
+                    retained,
+                    append_value(evicted, row.envelope_id),
+                    next,
+                    retained_bytes,
+                ))
+            }
+        },
+    )?;
 
     Ok(CloudCacheRetention {
         retained_ids: retained,
         evicted_ids: evicted,
         logical_bytes: retained_bytes,
     })
-
 }
 
 fn insert_id<'a>(mut ids: HashSet<&'a str>, id: &'a str) -> HashSet<&'a str> {
