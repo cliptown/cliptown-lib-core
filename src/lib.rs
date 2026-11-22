@@ -20,7 +20,9 @@ pub use auth::{
     Operation, ResourceContext,
 };
 pub use clip::{CipherAlgorithm, EncryptedClip, OpaqueCiphertext};
-pub use cloud_cache::{BorrowedTextEnvelope, CloudCacheRetention, measured_text_charge, plan_text_cache};
+pub use cloud_cache::{
+    measured_text_charge, plan_text_cache, BorrowedTextEnvelope, CloudCacheRetention,
+};
 pub use encrypted_objects::{
     EncryptedObjectChunk, EncryptedObjectManifest, ObjectGrantPolicy, WrappedContentKey,
 };
