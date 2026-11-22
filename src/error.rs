@@ -28,6 +28,10 @@ pub enum CoreError {
     StaleStepUp,
     #[error("resource ownership does not match the authenticated subject")]
     OwnershipMismatch,
+    #[error("cloud device sequence is invalid")]
+    InvalidDeviceSequence,
+    #[error("signed cloud device sequence was replayed")]
+    DeviceSequenceReplay,
     #[error("cloud text cache metadata is invalid")]
     InvalidCloudCache,
     #[error("ciphertext envelope is invalid")]
@@ -76,6 +80,8 @@ impl CoreError {
             Self::InsufficientAssurance => "insufficient_assurance",
             Self::StaleStepUp => "stale_step_up",
             Self::OwnershipMismatch => "ownership_mismatch",
+            Self::InvalidDeviceSequence => "invalid_device_sequence",
+            Self::DeviceSequenceReplay => "device_sequence_replay",
             Self::InvalidCloudCache => "invalid_cloud_cache",
             Self::InvalidCiphertext => "invalid_ciphertext",
             Self::UnsupportedCipher => "unsupported_cipher",
